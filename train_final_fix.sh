@@ -24,8 +24,8 @@
   --seed 42 \
   --print-freq 10 \
   --root-dir /kaggle/input/raer-video-emotion-dataset \
-  --train-annotation /kaggle/input/raer-annot/annotation/train.txt \
-  --val-annotation /kaggle/input/raer-annot/annotation/test.txt \
+  --train-annotation /kaggle/input/raer-annot/annotation/train_80.txt \
+  --val-annotation /kaggle/input/raer-annot/annotation/val_20.txt \
   --test-annotation /kaggle/input/raer-annot/annotation/test.txt \
   --clip-path ViT-B/16 \
   --bounding-box-face /kaggle/input/raer-video-emotion-dataset/RAER/bounding_box/face.json \
@@ -43,16 +43,14 @@
   --lambda_mi 0.1 \
   --mi-warmup 5 \
   --mi-ramp 10 \
-  --slerp-weight 0.5 \
+  --slerp-weight 0.0 \
   --temperature 0.07 \
   --use-ldl \
   --ldl-temperature 1.0 \
   --use-moco \
   --moco-k 4096 \
   --moco-m 0.99 \
-  --lambda_moco 0.1 \
-  --moco-warmup 5 \
-  --moco-ramp 10 \
+  --lambda_moco 0.0 \
   --use-amp \
   --use-weighted-sampler \
   --crop-body \

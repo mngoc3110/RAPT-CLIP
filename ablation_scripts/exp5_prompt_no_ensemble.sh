@@ -52,7 +52,7 @@ python main.py \
   --use-moco \
   --moco-k 4096 \
   --moco-m 0.99 \
-  --lambda_moco 0.1 \
+  --lambda_moco 0.0 \
   --moco-warmup 5 \
   --moco-ramp 10 \
   --use-amp \
