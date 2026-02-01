@@ -1,0 +1,6 @@
+# Ignore dataset
+raer/
+
+# Ignore training outputs / checkpoints / logs
+outputs/
+output/
