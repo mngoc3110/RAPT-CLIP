@@ -45,7 +45,7 @@ python main.py \
   --lambda_mi 0.1 \
   --mi-warmup 5 \
   --mi-ramp 10 \
-  --slerp-weight 0.0 \
+  --slerp-weight 0.5 \
   --temperature 0.07 \
   --use-ldl \
   --ldl-temperature 1.0 \

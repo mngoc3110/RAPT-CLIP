@@ -41,7 +41,7 @@ python main.py \
   --load_and_tune_prompt_learner True \
   --lambda_dc 0.0 \
   --lambda_mi 0.0 \
-  --slerp-weight 0.5 \
+  --slerp-weight 0.0 \
   --temperature 0.07 \
   --use-ldl \
   --ldl-temperature 1.0 \

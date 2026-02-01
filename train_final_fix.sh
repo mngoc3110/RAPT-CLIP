@@ -1,12 +1,12 @@
 #!/bin/bash
-
+# option cũ thêm batch ảo thôi 
 !export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 !python main.py \
   --mode train \
   --exper-name A100_AttnPool_LDL_MoCo4096_BS16_LR2e5 \
   --gpu 0 \
-  --epochs 60 \
+  --epochs 20 \
   --batch-size 4 \
   --accumulation-steps 4 \
   --optimizer AdamW \
