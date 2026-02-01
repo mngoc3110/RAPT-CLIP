@@ -65,6 +65,7 @@ train_group.add_argument('--batch-size', type=int, default=8, help='Batch size f
 train_group.add_argument('--print-freq', type=int, default=10, help='Frequency of printing training logs.')
 train_group.add_argument('--use-amp', action='store_true', help='Use Automatic Mixed Precision.')
 train_group.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping value.')
+train_group.add_argument('--accumulation-steps', type=int, default=1, help='Gradient accumulation steps to simulate larger batch size.')
 
 # --- Optimizer & Learning Rate ---
 optim_group = parser.add_argument_group('Optimizer & LR', 'Hyperparameters for the optimizer and scheduler')
@@ -255,7 +256,8 @@ def run_training(args: argparse.Namespace) -> None:
                     mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp,
                     dc_warmup=args.dc_warmup, dc_ramp=args.dc_ramp,
                     moco_warmup=args.moco_warmup, moco_ramp=args.moco_ramp,
-                    use_amp=args.use_amp, grad_clip=args.grad_clip)
+                    use_amp=args.use_amp, grad_clip=args.grad_clip,
+                    accumulation_steps=args.accumulation_steps)
     
     for epoch in range(start_epoch, args.epochs):
         inf = f'******************** Epoch: {epoch} ********************'

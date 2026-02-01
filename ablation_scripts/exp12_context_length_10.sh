@@ -6,10 +6,11 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python main.py \
   --mode train \
-  --exper-name ablation_context_4 \
+  --exper-name ablation_context_10 \
   --gpu 0 \
-  --epochs 60 \
+  --epochs 20 \
   --batch-size 4 \
+  --accumulation-steps 4 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \

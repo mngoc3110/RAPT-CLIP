@@ -20,7 +20,8 @@ class Trainer:
                  mi_warmup=0, mi_ramp=0,
                  dc_warmup=0, dc_ramp=0,
                  moco_warmup=0, moco_ramp=0,
-                 use_amp=False, grad_clip=1.0, mixup_alpha=0.0):
+                 use_amp=False, grad_clip=1.0, mixup_alpha=0.0,
+                 accumulation_steps=1):
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
@@ -45,6 +46,7 @@ class Trainer:
         self.use_amp = use_amp
         self.grad_clip = grad_clip
         self.mixup_alpha = mixup_alpha
+        self.accumulation_steps = accumulation_steps
         if self.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
         
@@ -123,10 +125,14 @@ class Trainer:
 
         context = torch.enable_grad() if is_train else torch.no_grad()
         
+        # Zero grad at the beginning of the epoch
+        if is_train:
+            self.optimizer.zero_grad()
+
         with context:
             for i, (images_face, images_body, target) in enumerate(loader):
                 # Debugging: Print batch information
-                if is_train:
+                if is_train and i % self.print_freq == 0:
                     print(f"--> Batch {i}, Size: {target.size(0)}, Labels: {target.tolist()}")
 
                 images_face = images_face.to(self.device)
@@ -142,18 +148,17 @@ class Trainer:
                     # Updated to unpack 4 return values (video_features added)
                     output, learnable_text_features, hand_crafted_text_features, video_features = self.model(images_face, images_body)
                     
-                    # For MI and DC losses, if using prompt ensembling, average the learnable_text_features
+                    # For MI and DC losses
                     processed_learnable_text_features = learnable_text_features
                     if hasattr(self.model, 'is_ensemble') and self.model.is_ensemble:
                         num_classes = self.model.num_classes
                         num_prompts_per_class = self.model.num_prompts_per_class
-                        # Reshape from (C*P, D) to (C, P, D) and then average over P
                         processed_learnable_text_features = learnable_text_features.view(num_classes, num_prompts_per_class, -1).mean(dim=1)
 
                     # Apply logit adjustment
                     if self.class_priors is not None and is_train:
                         output = output + self.logit_adj_tau * torch.log(self.class_priors + 1e-12)
-# coi lại
+
                     # Calculate loss
                     if isinstance(self.criterion, SemanticLDLLoss):
                         if is_train and self.mixup_alpha > 0:
@@ -166,6 +171,7 @@ class Trainer:
                             classification_loss = lam * self.criterion(output, target) + (1 - lam) * self.criterion(output, target_b)
                         else:
                             classification_loss = self.criterion(output, target)
+                    
                     loss = classification_loss
 
                     if is_train and self.mi_criterion is not None:
@@ -181,12 +187,7 @@ class Trainer:
                         dc_losses.update(dc_loss.item(), target.size(0))
                         
                     if is_train and self.moco_criterion is not None:
-                        # MoCo Loss Calculation
-                        # We use the processed (averaged if ensemble) text features as positive prototypes
-                        # target is (B)
-                        # queue is (D, K)
-                        queue = self.model.queue.clone().detach() # Get queue from buffer
-                        
+                        queue = self.model.queue.clone().detach()
                         if self.mixup_alpha > 0:
                              moco_loss = lam * self.moco_criterion(video_features, processed_learnable_text_features, target, queue) + \
                                          (1 - lam) * self.moco_criterion(video_features, processed_learnable_text_features, target_b, queue)
@@ -198,26 +199,39 @@ class Trainer:
                         moco_losses.update(moco_loss.item(), target.size(0))
 
                 if is_train:
-                    self.optimizer.zero_grad()
+                    # Normalize loss for gradient accumulation
+                    loss = loss / self.accumulation_steps
+                    
                     if self.use_amp:
                         self.scaler.scale(loss).backward()
-                        if self.grad_clip > 0:
-                            self.scaler.unscale_(self.optimizer)
-                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
                     else:
                         loss.backward()
-                        if self.grad_clip > 0:
-                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-                        self.optimizer.step()
 
-                # Record metrics
+                    # Perform optimization step every 'accumulation_steps' batches
+                    if (i + 1) % self.accumulation_steps == 0 or (i + 1) == len(loader):
+                        if self.use_amp:
+                            if self.grad_clip > 0:
+                                self.scaler.unscale_(self.optimizer)
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                            self.scaler.step(self.optimizer)
+                            self.scaler.update()
+                        else:
+                            if self.grad_clip > 0:
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                            self.optimizer.step()
+                        
+                        # Reset gradients
+                        self.optimizer.zero_grad()
+
+                # Record metrics (Using original loss value for logging if desired, or scaled one. 
+                # Usually logging the actual loss per batch is preferred, so we multiply back or log 'loss * accumulation_steps')
+                # Here 'loss' variable is already scaled down. Let's log the full loss value effectively.
+                loss_val = loss.item() * self.accumulation_steps if is_train else loss.item()
+                losses.update(loss_val, target.size(0))
+                
                 preds = output.argmax(dim=1)
                 correct_preds = preds.eq(target).sum().item()
                 acc = (correct_preds / target.size(0)) * 100.0
-
-                losses.update(loss.item(), target.size(0))
                 war_meter.update(acc, target.size(0))
 
                 all_preds.append(preds.cpu())
@@ -238,7 +252,6 @@ class Trainer:
                         else:
                             break
 
-
                 if i % self.print_freq == 0:
                     progress.display(i)
         
@@ -247,10 +260,9 @@ class Trainer:
         all_targets = torch.cat(all_targets)
         
         cm = confusion_matrix(all_targets.numpy(), all_preds.numpy())
-        war = war_meter.avg # Weighted Average Recall (WAR) is just the overall accuracy
+        war = war_meter.avg 
         
-        # Unweighted Average Recall (UAR)
-        class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6) # Add epsilon to avoid division by zero
+        class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
         uar = np.nanmean(class_acc) * 100
 
         logging.info(f"{prefix} * WAR: {war:.3f} | UAR: {uar:.3f}")

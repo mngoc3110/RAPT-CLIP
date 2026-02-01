@@ -10,6 +10,7 @@ python main.py \
   --gpu 0 \
   --epochs 60 \
   --batch-size 4 \
+  --accumulation-steps 4 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \

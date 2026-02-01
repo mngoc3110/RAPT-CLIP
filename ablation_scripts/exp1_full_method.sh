@@ -1,5 +1,5 @@
 #!/bin/bash
-# Exp 1: Full Proposed Method (SOTA) - Now includes SLERP
+# Exp 1: Full Proposed Method (SOTA) - Now includes SLERP & Gradient Accumulation
 
 cd ..
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -10,6 +10,7 @@ python main.py \
   --gpu 0 \
   --epochs 20 \
   --batch-size 4 \
+  --accumulation-steps 4 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \

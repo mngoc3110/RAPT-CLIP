@@ -8,6 +8,7 @@
   --gpu 0 \
   --epochs 60 \
   --batch-size 4 \
+  --accumulation-steps 4 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \
@@ -42,7 +43,7 @@
   --lambda_mi 0.1 \
   --mi-warmup 5 \
   --mi-ramp 10 \
-  --slerp-weight 0.0 \
+  --slerp-weight 0.5 \
   --temperature 0.07 \
   --use-ldl \
   --ldl-temperature 1.0 \
