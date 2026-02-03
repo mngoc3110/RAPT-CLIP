@@ -35,28 +35,6 @@ def get_class_counts(annotation_file):
     
     return sorted_counts
 
-def slerp(v1, v2, t, DOT_THRESHOLD=0.9995):
-    """Spherical linear interpolation between two vectors."""
-    v1_norm = v1 / torch.norm(v1, p=2, dim=-1, keepdim=True)
-    v2_norm = v2 / torch.norm(v2, p=2, dim=-1, keepdim=True)
-    
-    dot = (v1_norm * v2_norm).sum(dim=-1)
-    
-    # if dot is > 1, then clamp it to 1
-    dot = torch.clamp(dot, -1.0, 1.0)
-
-    # if vectors are too close, use linear interpolation
-    if torch.all(dot > DOT_THRESHOLD):
-        return (1 - t) * v1 + t * v2
-
-    # calculate the angle between the vectors
-    theta = torch.acos(dot) * t
-    v3 = v2 - dot.unsqueeze(-1) * v1
-    v3 = v3 / torch.norm(v3, p=2, dim=-1, keepdim=True)
-    
-    return (torch.cos(theta.unsqueeze(-1)) * v1) + (torch.sin(theta.unsqueeze(-1)) * v3)
-
-
 def save_checkpoint(state, is_best, checkpoint_path, best_checkpoint_path):
     torch.save(state, checkpoint_path)
     if is_best:

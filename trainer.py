@@ -15,11 +15,8 @@ class Trainer:
     def __init__(self, model, criterion, optimizer, scheduler, device,log_txt_path, 
                  mi_criterion=None, lambda_mi=0, 
                  dc_criterion=None, lambda_dc=0,
-                 moco_criterion=None, lambda_moco=0,
-                 class_priors=None, logit_adj_tau=1.0,
                  mi_warmup=0, mi_ramp=0,
                  dc_warmup=0, dc_ramp=0,
-                 moco_warmup=0, moco_ramp=0,
                  use_amp=False, grad_clip=1.0, mixup_alpha=0.0,
                  accumulation_steps=1):
         self.model = model
@@ -33,16 +30,10 @@ class Trainer:
         self.lambda_mi = lambda_mi
         self.dc_criterion = dc_criterion
         self.lambda_dc = lambda_dc
-        self.moco_criterion = moco_criterion
-        self.lambda_moco = lambda_moco
-        self.class_priors = class_priors
-        self.logit_adj_tau = logit_adj_tau
         self.mi_warmup = mi_warmup
         self.mi_ramp = mi_ramp
         self.dc_warmup = dc_warmup
         self.dc_ramp = dc_ramp
-        self.moco_warmup = moco_warmup
-        self.moco_ramp = moco_ramp
         self.use_amp = use_amp
         self.grad_clip = grad_clip
         self.mixup_alpha = mixup_alpha
@@ -100,7 +91,6 @@ class Trainer:
         losses = AverageMeter('Loss', ':.4e')
         mi_losses = AverageMeter('MI Loss', ':.4e')
         dc_losses = AverageMeter('DC Loss', ':.4e')
-        moco_losses = AverageMeter('MoCo Loss', ':.4e')
         war_meter = AverageMeter('WAR', ':6.2f')
         
         progress_meters = [losses, war_meter]
@@ -108,8 +98,6 @@ class Trainer:
             progress_meters.insert(1, mi_losses)
         if self.dc_criterion is not None:
             progress_meters.insert(2, dc_losses)
-        if self.moco_criterion is not None:
-            progress_meters.insert(3, moco_losses)
 
         progress = ProgressMeter(
             len(loader), 
@@ -144,8 +132,8 @@ class Trainer:
                     images_face, images_body, target_b, lam = self.mixup_data(images_face, images_body, self.mixup_alpha)
 
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
-                    # Forward pass
-                    # Updated to unpack 4 return values (video_features added)
+                    # [LUỒNG 7: FORWARD PASS]
+                    # Chạy model.forward() để lấy output
                     output, learnable_text_features, hand_crafted_text_features, video_features = self.model(images_face, images_body)
                     
                     # For MI and DC losses
@@ -155,11 +143,7 @@ class Trainer:
                         num_prompts_per_class = self.model.num_prompts_per_class
                         processed_learnable_text_features = learnable_text_features.view(num_classes, num_prompts_per_class, -1).mean(dim=1)
 
-                    # Apply logit adjustment
-                    if self.class_priors is not None and is_train:
-                        output = output + self.logit_adj_tau * torch.log(self.class_priors + 1e-12)
-
-                    # Calculate loss
+                    # [LUỒNG 8.1: LOSS CALCULATION - MAIN]
                     if isinstance(self.criterion, SemanticLDLLoss):
                         if is_train and self.mixup_alpha > 0:
                             classification_loss = lam * self.criterion(output, target, processed_learnable_text_features) + \
@@ -174,6 +158,7 @@ class Trainer:
                     
                     loss = classification_loss
 
+                    # [LUỒNG 8.2: LOSS CALCULATION - AUXILIARY]
                     if is_train and self.mi_criterion is not None:
                         mi_weight = get_loss_weight(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
                         mi_loss = self.mi_criterion(processed_learnable_text_features, hand_crafted_text_features)
@@ -186,20 +171,9 @@ class Trainer:
                         loss += dc_weight * dc_loss
                         dc_losses.update(dc_loss.item(), target.size(0))
                         
-                    if is_train and self.moco_criterion is not None:
-                        queue = self.model.queue.clone().detach()
-                        if self.mixup_alpha > 0:
-                             moco_loss = lam * self.moco_criterion(video_features, processed_learnable_text_features, target, queue) + \
-                                         (1 - lam) * self.moco_criterion(video_features, processed_learnable_text_features, target_b, queue)
-                        else:
-                             moco_loss = self.moco_criterion(video_features, processed_learnable_text_features, target, queue)
-                        
-                        moco_weight = get_loss_weight(int(epoch_str), self.moco_warmup, self.moco_ramp, self.lambda_moco)
-                        loss += moco_weight * moco_loss
-                        moco_losses.update(moco_loss.item(), target.size(0))
-
                 if is_train:
-                    # Normalize loss for gradient accumulation
+                    # [LUỒNG 9: BACKWARD PASS]
+                    # Optimize weights
                     loss = loss / self.accumulation_steps
                     
                     if self.use_amp:
@@ -207,7 +181,6 @@ class Trainer:
                     else:
                         loss.backward()
 
-                    # Perform optimization step every 'accumulation_steps' batches
                     if (i + 1) % self.accumulation_steps == 0 or (i + 1) == len(loader):
                         if self.use_amp:
                             if self.grad_clip > 0:
@@ -220,12 +193,9 @@ class Trainer:
                                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                             self.optimizer.step()
                         
-                        # Reset gradients
                         self.optimizer.zero_grad()
 
-                # Record metrics (Using original loss value for logging if desired, or scaled one. 
-                # Usually logging the actual loss per batch is preferred, so we multiply back or log 'loss * accumulation_steps')
-                # Here 'loss' variable is already scaled down. Let's log the full loss value effectively.
+                # Record metrics
                 loss_val = loss.item() * self.accumulation_steps if is_train else loss.item()
                 losses.update(loss_val, target.size(0))
                 

@@ -1,6 +1,18 @@
 # Ignore dataset
 raer/
+RAER/
 
 # Ignore training outputs / checkpoints / logs
 outputs/
 output/
+debug_predictions/
+debug_samples/
+ablation_scripts/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+.vscode/
+.idea/

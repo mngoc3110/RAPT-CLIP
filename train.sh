@@ -1,12 +1,20 @@
 #!/bin/bash
-# option cũ thêm batch ảo thôi 
-!export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-!python main.py \
+# [LUỒNG 1: KHỞI ĐỘNG]
+# Đây là file bắt đầu (Entry Point).
+# Nó định nghĩa cấu hình "Final Best" với:
+# 1. Attention Pooling (Temporal)
+# 2. Label Distribution Learning (LDL)
+# 3. Decorrelation Loss (DC) & Mutual Information Loss (MI)
+# 4. Adapter Tuning (Parameter Efficient Fine-tuning)
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+python main.py \
   --mode train \
-  --exper-name A100_AttnPool_LDL_MoCo4096_BS16_LR2e5 \
+  --exper-name Final_Best_Config_NoMoCo_NoSlerp \
   --gpu 0 \
-  --epochs 20 \
+  --epochs 30 \
   --batch-size 4 \
   --accumulation-steps 4 \
   --optimizer AdamW \
@@ -43,14 +51,9 @@
   --lambda_mi 0.1 \
   --mi-warmup 5 \
   --mi-ramp 10 \
-  --slerp-weight 0.0 \
   --temperature 0.07 \
   --use-ldl \
   --ldl-temperature 1.0 \
-  --use-moco \
-  --moco-k 4096 \
-  --moco-m 0.99 \
-  --lambda_moco 0.0 \
   --use-amp \
   --use-weighted-sampler \
   --crop-body \

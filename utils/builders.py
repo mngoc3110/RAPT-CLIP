@@ -2,7 +2,6 @@
 
 import argparse
 from typing import Tuple
-import os
 import torch
 import torch.utils.data
 from clip import clip
@@ -10,10 +9,12 @@ from clip import clip
 from dataloader.video_dataloader import train_data_loader, test_data_loader
 from models.Generate_Model import GenerateModel
 from models.Text import *
-from utils.utils import *
+from utils.utils import get_class_counts
 
 
 def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
+    # [LUỒNG 3.1: LOAD BACKBONE]
+    # Tải pretrained CLIP (ViT-B/16)
     print("Loading pretrained CLIP model...")
     CLIP_model, _ = clip.load(args.clip_path, device='cpu')
 
@@ -28,6 +29,8 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
 
 
     print("\nInstantiating GenerateModel...")
+    # [LUỒNG 3.2: INIT ARCHITECTURE]
+    # Khởi tạo kiến trúc tổng thể (Adapter, Prompt Learner, Temporal)
     model = GenerateModel(input_text=input_text, clip_model=CLIP_model, args=args)
 
     for name, param in model.named_parameters():
@@ -40,6 +43,8 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
             if "image_encoder" in name:
                 param.requires_grad = True
 
+    # [LUỒNG 3.3: SET TRAINABLE PARAMS]
+    # Chỉ train các module phụ trợ (Adapter, Prompt Learner, Temporal)
     trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter"]
     
     print('\nTrainable parameters:')
@@ -84,6 +89,7 @@ def get_class_info(args: argparse.Namespace) -> Tuple[list, list]:
 
 
 def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, torch.utils.data.DataLoader]: 
+    # [LUỒNG 4.1: DATA CONFIG]
     train_annotation_file_path = args.train_annotation
     val_annotation_file_path = args.val_annotation
     test_annotation_file_path = args.test_annotation
@@ -91,6 +97,8 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     class_names, _ = get_class_info(args)
     num_classes = len(class_names)
 
+    # [LUỒNG 4.2: DATASETS]
+    # Khởi tạo Dataset object (đọc video, transform)
     print("Loading train data...")
     train_data = train_data_loader(
         root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
@@ -138,6 +146,8 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
         sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights))
         shuffle = False # Sampler and shuffle are mutually exclusive
 
+    # [LUỒNG 4.3: DATALOADERS]
+    # Đóng gói Dataset vào DataLoader để batching
     train_loader = torch.utils.data.DataLoader(
         train_data, batch_size=args.batch_size, shuffle=shuffle, sampler=sampler,
         num_workers=args.workers, pin_memory=True, drop_last=True

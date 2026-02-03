@@ -3,7 +3,6 @@ import argparse
 import datetime
 import os
 import random
-import shutil
 import time
 
 import matplotlib
@@ -21,7 +20,7 @@ from dataloader.video_dataloader import train_data_loader, test_data_loader
 from models.Generate_Model import GenerateModel
 from models.Text import *
 from trainer import Trainer
-from utils.loss import *
+from utils.loss import SemanticLDLLoss, MILoss, DCLoss
 from utils.utils import *
 from utils.builders import *
 
@@ -85,18 +84,11 @@ optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for le
 loss_group = parser.add_argument_group('Loss & Imbalance Handling', 'Parameters for loss functions and imbalance handling')
 loss_group.add_argument('--lambda_mi', type=float, default=0.7, help='Weight for the Mutual Information loss.')
 loss_group.add_argument('--lambda_dc', type=float, default=1.2, help='Weight for the Decorrelation loss.')
-loss_group.add_argument('--lambda_moco', type=float, default=0.0, help='Weight for the MoCo loss.')
 loss_group.add_argument('--mi-warmup', type=int, default=5, help='Warmup epochs for MI loss.')
 loss_group.add_argument('--mi-ramp', type=int, default=8, help='Ramp-up epochs for MI loss.')
 loss_group.add_argument('--dc-warmup', type=int, default=5, help='Warmup epochs for DC loss.')
 loss_group.add_argument('--dc-ramp', type=int, default=10, help='Ramp-up epochs for DC loss.')
-loss_group.add_argument('--moco-warmup', type=int, default=5, help='Warmup epochs for MoCo loss.')
-loss_group.add_argument('--moco-ramp', type=int, default=10, help='Ramp-up epochs for MoCo loss.')
-loss_group.add_argument('--class-balanced-loss', action='store_true', help='Use class-balanced loss.')
-loss_group.add_argument('--logit-adj', action='store_true', help='Use logit adjustment.')
-loss_group.add_argument('--logit-adj-tau', type=float, default=0.5, help='Temperature for logit adjustment.')
 loss_group.add_argument('--use-weighted-sampler', action='store_true', help='Use WeightedRandomSampler.')
-loss_group.add_argument('--label-smoothing', type=float, default=0.05, help='Label smoothing factor.')
 loss_group.add_argument('--use-ldl', action='store_true', help='Use Semantic Label Distribution Learning (LDL) Loss.')
 loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temperature for LDL target distribution.')
 loss_group.add_argument('--mixup-alpha', type=float, default=0.0, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable.')
@@ -114,13 +106,8 @@ model_group.add_argument('--load_and_tune_prompt_learner', type=str, default='Tr
 model_group.add_argument('--num-segments', type=int, default=16, help='Number of segments to sample from each video.')
 model_group.add_argument('--duration', type=int, default=1, help='Duration of each segment.')
 model_group.add_argument('--image-size', type=int, default=224, help='Size to resize input images to.')
-model_group.add_argument('--slerp-weight', type=float, default=0.0, help='Weight for spherical linear interpolation (IEC).')
 model_group.add_argument('--temperature', type=float, default=0.07, help='Temperature for the classification layer.')
 model_group.add_argument('--crop-body', action='store_true', help='Crop body from the input images.')
-model_group.add_argument('--use-moco', action='store_true', help='Use MoCoRank for training.')
-model_group.add_argument('--moco-k', type=int, default=65536, help='Queue size for MoCo.')
-model_group.add_argument('--moco-m', type=float, default=0.999, help='Momentum for MoCo.')
-model_group.add_argument('--moco-t', type=float, default=0.07, help='Temperature for MoCo.')
 
 # ==================== Helper Functions ====================
 def setup_environment(args: argparse.Namespace) -> argparse.Namespace:
@@ -187,6 +174,9 @@ def setup_paths_and_logging(args: argparse.Namespace) -> argparse.Namespace:
 
 # ==================== Training Function ====================
 def run_training(args: argparse.Namespace) -> None:
+    # [LUỒNG 2: COORDINATOR]
+    # Hàm này nhận tham số từ script khởi chạy (sh) và điều phối các module khác.
+    
     # Paths for logging and saving
     log_txt_path = os.path.join(args.output_path, 'log.txt')
     log_curve_path = os.path.join(args.output_path, 'log.png')
@@ -199,14 +189,16 @@ def run_training(args: argparse.Namespace) -> None:
     best_val_war = 0.0
     start_epoch = 0
     
-    # Build model
+    # [LUỒNG 3: BUILD MODEL]
+    # Chuyển quyền sang utils/builders.py để tạo cấu trúc mạng.
     print("=> Building model...")
     class_names, input_text = get_class_info(args)
     model = build_model(args, input_text)
     model = model.to(args.device)
     print("=> Model built and moved to device successfully.")
 
-    # Load data
+    # [LUỒNG 4: DATA LOADING]
+    # Chuyển quyền sang utils/builders.py để nạp dữ liệu video.
     print("=> Building dataloaders...")
     train_loader, val_loader, test_loader = build_dataloaders(args)
     print("=> Dataloaders built successfully.")
@@ -214,15 +206,11 @@ def run_training(args: argparse.Namespace) -> None:
     # Loss and optimizer
     class_counts = get_class_counts(args.train_annotation)
     
+    # [LUỒNG 5: LOSS SELECTION]
+    # Quyết định dùng LDL (Label Distribution Learning) hay CrossEntropy chuẩn.
     if args.use_ldl:
         print(f"==> Using SemanticLDLLoss (LDL) with temperature {args.ldl_temperature}")
         criterion = SemanticLDLLoss(temperature=args.ldl_temperature).to(args.device)
-    elif args.label_smoothing > 0:
-        criterion = LSR2(e=args.label_smoothing, label_mode='class_descriptor').to(args.device)
-    elif args.class_balanced_loss:
-        print("=> Using FocalLoss as the class-balanced loss.")
-        # Using Focal Loss. Alpha can be tuned, 0.25 is a common starting point.
-        criterion = FocalLoss(alpha=0.25, gamma=2).to(args.device)
     else:
         criterion = nn.CrossEntropyLoss().to(args.device)
 
@@ -230,15 +218,6 @@ def run_training(args: argparse.Namespace) -> None:
     dc_criterion = DCLoss().to(args.device) if args.lambda_dc > 0 else None
     
     moco_criterion = None
-    if args.use_moco:
-        print(f"==> Using MoCoRankLoss with temperature {args.moco_t}")
-        moco_criterion = MoCoRankLoss(temperature=args.moco_t).to(args.device)
-
-    class_priors = None
-    if args.logit_adj:
-        print("=> Using logit adjustment.")
-        class_priors = torch.tensor(class_counts, dtype=torch.float) / sum(class_counts)
-        class_priors = class_priors.to(args.device)
 
     recorder = RecorderMeter(args.epochs)
     
@@ -293,14 +272,13 @@ def run_training(args: argparse.Namespace) -> None:
         else:
             print(f"==> No checkpoint found at '{args.resume}'")
 
+    # [LUỒNG 6: START TRAINING]
+    # Chuyển quyền điều khiển chính sang trainer.py để chạy vòng lặp epochs.
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
-                    moco_criterion=moco_criterion, lambda_moco=args.lambda_moco,
-                    class_priors=class_priors, logit_adj_tau=args.logit_adj_tau,
                     mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp,
                     dc_warmup=args.dc_warmup, dc_ramp=args.dc_ramp,
-                    moco_warmup=args.moco_warmup, moco_ramp=args.moco_ramp,
                     use_amp=args.use_amp, grad_clip=args.grad_clip,
                     accumulation_steps=args.accumulation_steps)
     
@@ -374,6 +352,8 @@ def run_training(args: argparse.Namespace) -> None:
     )
 
 def run_eval(args: argparse.Namespace) -> None:
+    # [LUỒNG 10: EVALUATION]
+    # Luồng riêng dành cho chế độ --mode eval
     print("=> Starting evaluation mode...")
     log_txt_path = os.path.join(args.output_path, 'log.txt')
     log_confusion_matrix_path = os.path.join(args.output_path, 'confusion_matrix.png')
@@ -383,7 +363,19 @@ def run_eval(args: argparse.Namespace) -> None:
     model = model.to(args.device)
 
     # Load pretrained weights
-    model.load_state_dict(torch.load(args.eval_checkpoint,map_location=args.device, weights_only=False)['state_dict'])
+    state_dict = torch.load(args.eval_checkpoint, map_location=args.device, weights_only=False)['state_dict']
+    # Handle potential DataParallel key mismatch if needed, though usually handled inside load logic or model wrapper
+    # Here we assume standard saving. If keys have 'module.', we might need to strip them.
+    # Let's add a robust loading:
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith('module.'):
+            new_state_dict[k[7:]] = v
+        else:
+            new_state_dict[k] = v
+            
+    model.load_state_dict(new_state_dict, strict=False) # strict=False to ignore MoCo keys if not used
+    print(f"=> Loaded checkpoint from '{args.eval_checkpoint}' with strict=False")
 
     # Load data
     _, _, test_loader = build_dataloaders(args)
@@ -403,6 +395,8 @@ def run_eval(args: argparse.Namespace) -> None:
 
 # ==================== Entry Point ====================
 if __name__ == '__main__':
+    # [LUỒNG 1.1: ENTRY POINT]
+    # Chương trình thực sự bắt đầu từ đây khi gọi 'python main.py'
     args = parser.parse_args()
     args = setup_environment(args)
     args = setup_paths_and_logging(args)

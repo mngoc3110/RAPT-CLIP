@@ -1,10 +1,14 @@
 #!/bin/bash
+# Script for evaluating trained models locally
+# [LUỒNG 1: KHỞI ĐỘNG EVAL]
+# Sử dụng cấu hình kiến trúc Y HỆT như file training (train_final_fix.sh)
+# Chỉ thay đổi --mode thành 'eval' và chỉ định checkpoint cần kiểm tra.
 
 python main.py \
     --mode eval \
     --gpu mps \
-    --exper-name eval_final_fix \
-    --eval-checkpoint output/model_best.pth \
+    --exper-name eval_Final_Best \
+    --eval-checkpoint output/full_batch_ao/model_best.pth \
     --root-dir ./ \
     --train-annotation RAER/annotation/train_80.txt \
     --val-annotation RAER/annotation/val_20.txt \
@@ -13,6 +17,8 @@ python main.py \
     --bounding-box-face RAER/bounding_box/face.json \
     --bounding-box-body RAER/bounding_box/body.json \
     --text-type prompt_ensemble \
+    --temporal-type attn_pool \
+    --use-adapter True \
     --contexts-number 8 \
     --class-token-position end \
     --class-specific-contexts True \
@@ -22,9 +28,5 @@ python main.py \
     --duration 1 \
     --image-size 224 \
     --seed 42 \
-    --slerp-weight 0.0 \
     --temperature 0.07 \
-    --use-moco \
-    --moco-k 4096 \
-    --moco-m 0.99 \
     --crop-body
