@@ -14,16 +14,16 @@ python main.py \
   --mode train \
   --exper-name Final_Best_Config_NoMoCo_NoSlerp \
   --gpu 0 \
-  --epochs 25 \
+  --epochs 40 \
   --batch-size 4 \
-  --accumulation-steps 4 \
+  --accumulation-steps 8 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \
   --lr-prompt-learner 2e-4 \
   --lr-adapter 1e-4 \
   --weight-decay 0.0005 \
-  --milestones 10 20 \
+  --milestones 10 20 30 \
   --gamma 0.1 \
   --temporal-layers 1 \
   --num-segments 16 \
@@ -45,11 +45,11 @@ python main.py \
   --class-token-position end \
   --class-specific-contexts True \
   --load_and_tune_prompt_learner True \
-  --lambda_dc 0.1 \
-  --dc-warmup 5 \
+  --lambda_dc 0.2 \
+  --dc-warmup 3 \
   --dc-ramp 10 \
-  --lambda_mi 0.1 \
-  --mi-warmup 5 \
+  --lambda_mi 0.2 \
+  --mi-warmup 3 \
   --mi-ramp 10 \
   --temperature 0.07 \
   --use-ldl \
@@ -58,4 +58,4 @@ python main.py \
   --use-weighted-sampler \
   --crop-body \
   --grad-clip 1.0 \
-  --mixup-alpha 0.2
+  --mixup-alpha 0.4
