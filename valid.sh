@@ -4,7 +4,7 @@ python main.py \
     --mode eval \
     --gpu mps \
     --exper-name eval_final_fix \
-    --eval-checkpoint output/best/model_best.pth \
+    --eval-checkpoint best/model_best.pth \
     --root-dir ./ \
     --train-annotation RAER/annotation/train_80.txt \
     --val-annotation RAER/annotation/val_20.txt \
