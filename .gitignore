@@ -11,7 +11,7 @@ daisee_annotations/
 caer_annotations/
 
 # Ignore training outputs / checkpoints / logs
-outputs/
+
 debug_predictions/
 debug_samples/
 __pycache__/

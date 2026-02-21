@@ -2,7 +2,7 @@
 # ABLATION: FULL PIPELINE
 # - Loss: LDAM
 # - Sampler: Weighted
-# - Mixup: 0.2
+# - Mixup: 0.0
 # - Adapter: Learned
 # - Prompt: Tuning (CoOp)
 
@@ -48,4 +48,4 @@ python main.py \
   --use-weighted-sampler \
   --crop-body \
   --grad-clip 1.0 \
-  --mixup-alpha 0.2
+  --mixup-alpha 0.0
