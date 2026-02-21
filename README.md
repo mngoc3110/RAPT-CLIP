@@ -152,7 +152,6 @@ The `train_sh/ablation/` folder contains scripts to test different configuration
 ```
 RAPT-CLIP-RAER/
 ├── dataloader/          # Custom dataloaders for Video/Image folders
-│   ├── daisee_dataloader.py
 │   ├── video_dataloader.py
 │   └── video_transform.py
 ├── models/              # Model definitions
