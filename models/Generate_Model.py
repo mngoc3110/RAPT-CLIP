@@ -28,6 +28,12 @@ class GenerateModel(nn.Module):
         self.dtype = clip_model.dtype
         self.image_encoder = clip_model.visual
 
+        # Freeze Image Encoder if requested
+        if hasattr(args, 'freeze_image_encoder') and args.freeze_image_encoder:
+            print("=> Freezing Image Encoder")
+            for param in self.image_encoder.parameters():
+                param.requires_grad = False
+
         # For EAA
         self.face_adapter = Adapter(c_in=512, reduction=4)
 

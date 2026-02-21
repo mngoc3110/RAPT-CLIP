@@ -17,7 +17,8 @@ from utils.utils import *
 
 def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
     print("Loading pretrained CLIP model...")
-    CLIP_model, _ = clip.load(args.clip_path, device='cpu')
+    # Pass drop_path_rate to clip.load so it can be used during model construction
+    CLIP_model, _ = clip.load(args.clip_path, device='cpu', drop_path=args.drop_path_rate)
 
     print("\nInput Text Prompts:")
     # Handle the case where input_text is a list of lists for prompt ensembling
@@ -37,7 +38,7 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
 
     # Freeze CLIP image encoder if lr_image_encoder is 0
     # Otherwise, make it trainable.
-    if args.lr_image_encoder > 0:
+    if args.lr_image_encoder > 0 and not args.freeze_image_encoder:
         for name, param in model.named_parameters():
             if "image_encoder" in name:
                 param.requires_grad = True
