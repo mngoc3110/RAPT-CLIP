@@ -5,7 +5,7 @@ from typing import Tuple
 import os
 import torch
 import torch.utils.data
-from clip import clip
+from models.clip import clip
 
 from dataloader.video_dataloader import train_data_loader, test_data_loader
 from dataloader.ckplus_dataloader import ckplus_train_data_loader, ckplus_test_data_loader

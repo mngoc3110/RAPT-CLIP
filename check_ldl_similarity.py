@@ -1,6 +1,6 @@
 
 import torch
-from clip import clip
+from models.clip import clip
 import numpy as np
 import torch.nn.functional as F
 

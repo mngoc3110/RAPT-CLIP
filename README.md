@@ -1,139 +1,180 @@
-# CLIP-CAER with Advanced Training Strategies
+# RAPT-CLIP-RAER: Robust Academic Performance Tracking with CLIP for Real-world Academic Emotion Recognition
 
-This repo is the official implementation for CLIP-based Context-aware Academic Emotion Recognition[[arXiv](https://arxiv.org/abs/2507.00586)], with additional advanced training strategies implemented to further boost performance, including **Expression-Aware Adapters (EAA)**, **Instance-Enhanced Classifiers (IEC)**, and **Mutual Information (MI) Loss** for dual-view prompt regularization. The paper has been accepted to ICCV 2025.
+This repository contains the official implementation of **RAPT-CLIP-RAER**, a state-of-the-art framework for Video Facial Expression Recognition (VFER) and Context-Aware Academic Emotion Recognition. 
 
-## Introduction
-In this paper, we propose CLIP-CAER, a context-aware academic emotion recognition method based on CLIP. By leveraging contextual information from learning scenarios, our method significantly improves the model’s ability to recognize students’ learning states (i.e., focused or distracted). Notably, it achieves an approximately 20% improvement in accuracy for the distraction category.<br>
+Building upon the foundations of CLIP-CAER, this project introduces advanced techniques including **Expression-Aware Adapters (EAA)**, **Temporal Attention Pooling**, **Prompt Learning with Ensembles**, and **Semantic Label Distribution Learning (LDL)** to achieve robust performance in challenging, real-world academic environments.
 
-This repository enhances the original CLIP-CAER by integrating several state-of-the-art techniques aimed at improving feature representation and handling data imbalance, targeting a UAR (Unweighted Average Recall) of over 70%.
+## 🌟 Key Features
 
+*   **Dual-Stream Architecture:** Simultaneously processes **Face** (fine-grained expression) and **Context/Body** (posture and behavior) streams using a shared CLIP backbone.
+*   **Temporal Attention Pooling:** A Transformer-based temporal model that dynamically weights frames to focus on "peak" emotional moments, effectively handling neutral-dominant video sequences.
+*   **Expression-Aware Adapter (EAA):** A lightweight, trainable module inserted into the CLIP visual encoder to adapt it for subtle facial expression recognition without destroying pre-trained knowledge.
+*   **Robust Prompt Learning:** Utilizes **Prompt Ensembling** and **Learnable Contexts** to generate powerful text classifiers.
+*   **Advanced Loss Functions:**
+    *   **Mutual Information (MI) Loss:** Aligns learnable prompts with hand-crafted semantic descriptors to prevent overfitting.
+    *   **Decorrelation (DC) Loss:** Reduces redundancy in feature dimensions.
+    *   **Semantic LDL:** Handles class ambiguity (e.g., "Confusion" vs. "Neutral") by using soft labels based on semantic similarity.
+    *   **MoCo (Momentum Contrast):** Optional self-supervised contrastive learning for better feature representation.
 
-## New Architecture Details
+---
 
-The enhanced architecture builds upon the CLIP-CAER backbone, incorporating several new modules to create a more robust and accurate model, specifically targeting high performance on imbalanced datasets (UAR > 70%).
+## 📊 Supported Datasets
 
-### 1. Dual-Stream Visual Backbone
-The model processes two separate visual streams:
-- **Face Stream:** Cropped facial regions to capture fine-grained facial expressions.
-- **Context Stream:** The full video frame or body region to capture surrounding context and behavior.
+The framework is designed to work with multiple datasets, with specific optimizations for academic emotion recognition.
 
-Both streams are processed by a shared CLIP Visual Encoder.
+### 1. RAER (Real-world Academic Emotion Recognition)
+*   **Focus:** Students in real classroom environments.
+*   **Classes (5):** 
+    1.  **Neutral** (Calm, attentive)
+    2.  **Enjoyment** (Happy, engaged)
+    3.  **Confusion** (Puzzled, trying to understand)
+    4.  **Fatigue** (Tired, yawning)
+    5.  **Distraction** (Looking away, unfocused)
+*   **Characteristics:** Highly imbalanced, subtle expressions, significant pose variations.
 
-### 2. Attention Pooling for Temporal Modeling
-Instead of using a standard `[CLS]` token which can be diluted by neutral frames, we implement a **Temporal Transformer with Attention Pooling**.
-- **Mechanism:** The model calculates an attention score for each frame in the sequence, effectively "highlighting" the most emotional frames (peak expression) and suppressing neutral or noisy frames.
-- **Benefit:** This is crucial for imbalanced datasets where the key emotional signal might only be present in a few frames.
+### 2. DAiSEE (Dataset for Affective States in E-Environments)
+*   **Focus:** Engagement levels in e-learning settings.
+*   **Classes (4):** Very Low, Low, High, Very High (Engagement).
+*   **Characteristics:** Long videos, subtle changes in engagement.
 
-### 3. EAA (Expression-Aware Adapter)
-To better capture subtle, emotion-specific facial details without sacrificing the generalization power of the pre-trained CLIP model, a lightweight **Expression-Aware Adapter** is integrated into the face stream.
-- **Implementation:** A bottleneck adapter module is inserted after the CLIP visual encoder for the face stream.
-- **Trainable:** Only the adapter's parameters are fine-tuned, keeping the main visual encoder frozen.
+### 3. CK+ (Extended Cohn-Kanade)
+*   **Focus:** Lab-controlled posed facial expressions.
+*   **Classes (7):** Anger, Contempt, Disgust, Fear, Happy, Sadness, Surprise.
 
-### 4. Dual-View Prompting & MoCoRank
-- **Prompt Ensembling:** We use a learnable prompt ensemble strategy to generate robust text embeddings.
-- **MoCoRank:** We integrate Momentum Contrast (MoCo) with a memory queue to maintain a large set of negative samples. This helps the model learn more discriminative features by contrasting the current video against a history of previous samples, which is particularly effective for learning from long-tailed distributions.
+### 4. SFER & CAER
+*   **Focus:** Student Facial Expression / Context-Aware Emotion Recognition.
+*   **Classes (7):** Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise.
 
-### 5. Composite Loss Function with Semantic LDL
-The model is trained with a composite loss function designed to handle ambiguity and class imbalance:
-`L_total = L_LDL + λ_mi * L_mi + λ_dc * L_dc + L_MoCo`
+---
 
-- **`L_LDL` (Semantic Label Distribution Learning Loss)**: Instead of one-hot labels, we use soft labels generated based on the semantic similarity between class prompts. This teaches the model the "soft" relationships between emotions (e.g., Anger is more similar to Disgust than to Happy).
-- **`L_mi` (Mutual Information Loss)**: Maximizes the mutual information between learnable prompts and fixed descriptive prompts to prevent semantic drift.
-- **`L_dc` (Decorrelation Loss)**: Reduces the redundancy between feature dimensions.
-- **`L_MoCo`**: The contrastive loss from the MoCoRank module.
+## 🏗️ Model Architecture
 
-### 6. IEC (Instance-Enhanced Classifier)
-*(Optional)* To make the text-based classifier more adaptive to the visual features of each specific video instance, the IEC module can be enabled to blend instance features with text prototypes using Spherical Linear Interpolation (Slerp).
+The `GenerateModel` class (in `models/Generate_Model.py`) orchestrates the following components:
 
-## Weights Download
-We provide the model weights trained by the method in this paper, which can be downloaded [here](https://drive.google.com/file/d/1mNYBKJ-vlsGf1QTN0tySs0-7sp-f7flb/view?usp=sharing).
+1.  **Visual Encoder (CLIP ViT-B/32):** Extracts spatial features from every frame. The weights are largely frozen to preserve generalization.
+2.  **Expression-Aware Adapter (EAA):** A bottleneck module (Linear -> ReLU -> Linear) added to the visual encoder. It learns to extract emotion-specific features (e.g., eyebrow movement, mouth shape).
+3.  **Temporal Transformer:** Takes the sequence of frame features (T x D) and applies Self-Attention.
+4.  **Attention Pooling:** Instead of a simple average or `[CLS]` token, an attention mechanism calculates a score for each frame. The final video representation is a weighted sum of frame features, prioritizing frames with strong emotional content.
+5.  **Text Encoder (Prompt Learner):** Generates class embeddings using learnable context vectors (e.g., `X X X X [CLASS]`) mixed with fixed templates.
 
-**Important**: By downloading, accessing, or using the model weights, you agree to be bound by the terms and conditions of the license agreement located in the file weights/LICENSE-WEIGHTS.md, which permits use **only for non-commercial research purposes**. Please read the license carefully before downloading or using the weights.
+---
 
-If you do not agree to the non-commercial use terms of the license, please do not download or use the model weights.
+## 🛠️ Installation
 
+### Prerequisites
+*   Python 3.8+
+*   PyTorch 1.12+ (Tested with 2.2.2)
+*   CUDA 11.x/12.x
 
-## Environment
-
-The code is developed and tested under the following environment:
-
-- Python 3.8
-
-- PyTorch 2.2.2
-
-- CUDA 12.4
-
+### Setup
 ```bash
-conda create -n clip-caer python=3.8
-conda activate clip-caer
-pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
+# Create environment
+conda create -n raer_clip python=3.8
+conda activate raer_clip
+
+# Install PyTorch (adjust for your CUDA version)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Install dependencies
+pip install ftfy regex tqdm opencv-python pillow
 ```
 
-## Usage
+---
+
+## 📂 Data Preparation
+
+The project expects datasets to be organized with an annotation file (txt) and a directory of videos/images.
+
+### Annotation Format
+A text file where each line contains:
+`path/to/video_or_folder num_frames label_index`
+
+Example (`train.txt`):
+```text
+RAER/train/Neutral/student01_clip01 45 0
+RAER/train/Confusion/student02_clip05 32 2
+...
+```
+
+### Bounding Boxes
+For the Dual-Stream model, you need JSON files containing face and body bounding boxes for every frame (or at least one per clip).
+*   `face_bbox.json`: `{"video_name": {"frame_idx.jpg": [x1, y1, x2, y2], ...}}`
+*   `body_bbox.json`: Similar structure for body crops.
+
+---
+
+## 🚀 Usage
 
 ### Training
-The training process can be customized with several new command-line arguments to control the advanced features.
+The project uses a highly optimized configuration for the RAER dataset, as defined in `train_sh/ablation/raer_full.sh`.
 
 ```bash
-bash train.sh
-```
-For Google Colab users, a dedicated script is provided:
-```bash
-bash train_colab.sh
+bash train_sh/ablation/raer_full.sh
 ```
 
-You can modify `train.sh` or `train_colab.sh` or pass arguments directly to `main.py`. The new arguments are:
-- `--mi-loss-weight` (float, default: 0.5): Sets the weight for the Mutual Information loss.
-- `--dc-loss-weight` (float, default: 0.1): Sets the weight for the Decorrelation loss.
-- `--lr-adapter` (float, default: 1e-4): Defines the learning rate for the Expression-aware Adapter.
-- `--slerp-weight` (float, default: 0.5): Controls the interpolation factor for the Instance-enhanced Classifier. Set to `0` to disable IEC.
-- `--temperature` (float, default: 0.07): Temperature for the classification layer.
-- `--class-balanced-loss`: (flag) Enable this to use class-balanced weights for the cross-entropy loss.
-- `--logit-adj`: (flag) Enable this to use Logit Adjustment.
-- `--logit-adj-tau` (float, default: 1.0): Temperature for Logit Adjustment.
+**Key Training Parameters:**
+*   **Backbone:** CLIP ViT-B/16
+*   **Batch Size:** 4
+*   **Optimizer:** AdamW (LR: 2e-5, Prompt Learner LR: 3e-4)
+*   **Loss:** LDAM Loss with Class-Weighted Sampling.
+*   **Regularization:** Mutual Information (MI) and Decorrelation (DC) losses enabled after a 5-epoch warmup.
+*   **Data:** 16 segments per video, 224x224 image size, including both face and body crops.
 
-Example of enabling all features:
+### Ablation Studies
+We have conducted extensive ablation studies to verify the effectiveness of each component. These scripts are available in `train_sh/ablation/`:
+*   `raer_full.sh`: The complete pipeline (EAA + Prompt Tuning + LDAM + MI/DC Loss).
+*   `raer_no_adapter.sh`: Removes the Expression-Aware Adapter.
+*   `raer_no_prompt_tuning.sh`: Uses fixed hand-crafted prompts instead of learnable contexts.
+*   `raer_no_ldam.sh`: Replaces LDAM loss with standard Cross-Entropy.
+*   `raer_no_attn-pooling.sh`: Tests alternative temporal aggregation methods.
+*   `raer_no_sampler.sh`: Disables the weighted random sampler for handling imbalance.
+
+All ablation experiments have been executed to establish the final "Full" configuration as the best-performing model.
+
+### Evaluation & TTA (Test-Time Augmentation)
+To evaluate the best model using Test-Time Augmentation (FiveCrop + Horizontal Flip):
+
 ```bash
-python main.py \
-    --mode train \
-    --exper-name "EAA_IEC_MI_Balanced" \
-    --gpu 0 \
-    --epochs 50 \
-    --batch-size 8 \
-    --lr 0.0003 \
-    --lr-image-encoder 1e-6 \
-    --lr-prompt-learner 0.001 \
-    --lr-adapter 1e-4 \
-    --mi-loss-weight 0.7 \
-    --dc-loss-weight 1.2 \
-    --slerp-weight 0.5 \
-    --logit-adj \
-    --logit-adj-tau 0.5 \
-    --temperature 0.07 \
-    --root-dir /kaggle/input/raer-video-emotion-dataset/RAER \
-    --train-annotation /kaggle/input/raer-annot/annotation/train_80.txt \
-    --test-annotation /kaggle/input/raer-annot/annotation/val_20.txt \
-    --bounding-box-face /kaggle/input/raer-annot/annotation/bounding_box/face.json \
-    --bounding-box-body /kaggle/input/raer-annot/annotation/bounding_box/body.json \
-    --clip-path ViT-B/32 \
-    --contexts-number 12 \
-    ... # other arguments
+bash run_tta.sh
+```
+This script runs `eval_tta.py` which loads the best checkpoint (`model_best.pth`) and performs robust evaluation.
+
+### Ablation Studies
+The `train_sh/ablation/` folder contains scripts to test different configurations:
+*   `raer_no_adapter.sh`: Train without EAA.
+*   `raer_no_prompt_tuning.sh`: Train with fixed prompts.
+*   `raer_no_mixup.sh`: Train without Mixup augmentation.
+
+---
+
+## 🌲 Project Structure
+
+```
+RAPT-CLIP-RAER/
+├── dataloader/          # Custom dataloaders for Video/Image folders
+│   ├── daisee_dataloader.py
+│   ├── video_dataloader.py
+│   └── video_transform.py
+├── models/              # Model definitions
+│   ├── Generate_Model.py      # Main architecture
+│   ├── Adapter.py             # EAA module
+│   ├── Temporal_Model.py      # Transformer + Attn Pooling
+│   ├── Prompt_Learner.py      # Learnable prompts
+│   └── Text.py                # Class descriptions
+├── train_sh/            # Training shell scripts
+│   └── ablation/        # Ablation study configurations
+├── utils/               # Helper functions (Loss, Logging)
+├── main.py              # Main training loop
+├── trainer.py           # Training/Validation engine
+├── eval_tta.py          # TTA Evaluation script
+└── README.md            # This file
 ```
 
-### Evaluation
-```bash
-bash valid.sh
-```
-For Google Colab users, a dedicated script is provided:
-```bash
-bash valid_colab.sh
-```
+## 📜 Citation
 
-## Citations
+If you use this code or dataset, please cite the following paper:
 
-If you find our paper useful in your research, please consider citing:
-
-```bash
+```bibtex
 @InProceedings{Zhao_2025_ICCV,
     author    = {Zhao, Luming and Xuan, Jingwen and Lou, Jiamin and Yu, Yonghui and Yang, Wenwu},
     title     = {Context-Aware Academic Emotion Dataset and Benchmark},
@@ -142,5 +183,5 @@ If you find our paper useful in your research, please consider citing:
 }
 ```
 
-## Acknowledgment
-Our codes are mainly based on [DFER-CLIP](https://github.com/zengqunzhao/DFER-CLIP/tree/main). Many thanks to the authors!
+## 🙏 Acknowledgments
+This codebase is built upon [DFER-CLIP](https://github.com/zengqunzhao/DFER-CLIP). We thank the authors for their open-source contribution.

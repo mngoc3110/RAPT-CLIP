@@ -3,7 +3,7 @@ from models.Temporal_Model import *
 from models.Prompt_Learner import *
 from models.Text import class_descriptor_5_only_face
 from models.Adapter import Adapter
-from clip import clip
+from models.clip import clip
 import copy
 import itertools
 

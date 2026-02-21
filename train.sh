@@ -2,7 +2,7 @@
 # ABLATION: FULL PIPELINE
 # - Loss: LDAM
 # - Sampler: Weighted
-# - Mixup: 0.2
+# - Mixup: 0.0
 # - Adapter: Learned
 # - Prompt: Tuning (CoOp)
 

@@ -1,26 +1,19 @@
 #!/bin/bash
-# ABLATION: FULL PIPELINE
-# - Loss: LDAM
-# - Sampler: Weighted
-# - Mixup: 0.0
-# - Adapter: Learned
-# - Prompt: Tuning (CoOp)
-
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python main.py \
   --mode train \
-  --exper-name Ablation-RAER-FULL \
+  --exper-name Ablation-RAER-FULL_fix_parameter_fullface_train_test \
   --dataset RAER \
   --gpu 0 \
   --epochs 20 \
-  --batch-size 8 \
+  --batch-size 4 \
   --optimizer AdamW \
-  --lr 1e-4 \
+  --lr 2e-5 \
   --lr-image-encoder 1e-6 \
-  --lr-prompt-learner 1e-3 \
+  --lr-prompt-learner 3e-4 \
   --lr-adapter 1e-4 \
-  --weight-decay 0.1 \
+  --weight-decay 0.005 \
   --milestones 10 15 \
   --gamma 0.1 \
   --temporal-layers 1 \
@@ -29,21 +22,23 @@ python main.py \
   --image-size 224 \
   --seed 42 \
   --print-freq 50 \
-  --root-dir ./dataset/RAER \
-  --train-annotation ./dataset/RAER/annotation/train_80.txt \
-  --val-annotation ./dataset/RAER/annotation/val_20.txt \
-  --test-annotation ./dataset/RAER/annotation/test.txt \
+  --root-dir /kaggle/input/datasets/bearmn/raer-video-emotion-dataset \
+  --train-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt \
+  --val-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
+  --test-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
   --clip-path ViT-B/16 \
-  --bounding-box-face ./dataset/RAER/bounding_box/face.json \
-  --bounding-box-body ./dataset/RAER/bounding_box/body.json \
+  --bounding-box-face /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/face.json \
+  --bounding-box-body /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/body.json \
   --text-type prompt_ensemble \
   --contexts-number 8 \
   --class-token-position end \
   --class-specific-contexts True \
   --load_and_tune_prompt_learner True \
   --loss-type ldam \
-  --lambda_dc 0.05 \
-  --lambda_mi 0.05 \
+  --lambda_dc 0.1 \
+  --mi-warmup 5 \
+  --dc-warmup 5 \
+  --lambda_mi 0.1 \
   --use-amp \
   --use-weighted-sampler \
   --crop-body \
