@@ -108,8 +108,7 @@ class Trainer:
             if self.mi_ramp_type == 'ramp_up':
                 mi_weight = get_loss_weight(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
             elif self.mi_ramp_type == 'ramp_down':
-                # Note: rampdown doesn't use mi_warmup, it starts immediately.
-                mi_weight = get_loss_weight_rampdown(int(epoch_str), self.mi_ramp, self.lambda_mi)
+                mi_weight = get_loss_weight_rampdown(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
             else:
                 mi_weight = self.lambda_mi # Fallback to the final weight
 

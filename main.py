@@ -91,6 +91,7 @@ loss_group.add_argument('--lambda_mi', type=float, default=0.1, help='Weight for
 loss_group.add_argument('--lambda_dc', type=float, default=0.1, help='Weight for the Decorrelation loss.')
 loss_group.add_argument('--mi-warmup', type=int, default=5, help='Warmup epochs for MI loss.')
 loss_group.add_argument('--mi-ramp', type=int, default=10, help='Ramp-up epochs for MI loss.')
+loss_group.add_argument('--mi-ramp-type', type=str, default='ramp_up', choices=['ramp_up', 'ramp_down'], help='Type of ramp for MI loss weight (ramp_up or ramp_down).')
 loss_group.add_argument('--dc-warmup', type=int, default=5, help='Warmup epochs for DC loss.')
 loss_group.add_argument('--dc-ramp', type=int, default=10, help='Ramp-up epochs for DC loss.')
 loss_group.add_argument('--use-weighted-sampler', action='store_true', help='Use WeightedRandomSampler.')
@@ -302,7 +303,7 @@ def run_training(args: argparse.Namespace) -> None:
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
-                    mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp,
+                    mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp, mi_ramp_type=args.mi_ramp_type,
                     dc_warmup=args.dc_warmup, dc_ramp=args.dc_ramp, 
                     use_amp=args.use_amp, grad_clip=args.grad_clip, mixup_alpha=args.mixup_alpha,
                     use_ldl=args.use_ldl, ldl_warmup=args.ldl_warmup)

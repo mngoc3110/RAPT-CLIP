@@ -20,12 +20,19 @@ def get_loss_weight(epoch, warmup_epochs, ramp_up_epochs, final_weight):
     else:
         return final_weight
 
-def get_loss_weight_rampdown(epoch, ramp_down_epochs, final_weight):
-    """Calculates a loss weight that ramps down from final_weight to 0."""
+def get_loss_weight_rampdown(epoch, warmup_epochs, ramp_down_epochs, final_weight):
+    """Calculates a loss weight that first warms up (is 0), then ramps down."""
     if ramp_down_epochs == 0:
-        return final_weight
-    if epoch < ramp_down_epochs:
-        return final_weight * (ramp_down_epochs - epoch) / ramp_down_epochs
+        # If no ramp-down period, return final weight after warmup
+        return 0.0 if epoch < warmup_epochs else final_weight
+
+    if epoch < warmup_epochs:
+        return 0.0
+    elif epoch < warmup_epochs + ramp_down_epochs:
+        # Calculate the progress within the ramp-down period.
+        progress = (epoch - warmup_epochs) / ramp_down_epochs
+        # Invert the progress to ramp down from 1.0 to 0.0
+        return final_weight * (1.0 - progress)
     else:
         return 0.0
 

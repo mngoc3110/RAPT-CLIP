@@ -44,6 +44,7 @@ python main.py \
   --loss-type ldam \
   --lambda_dc 0.1 \
   --lambda_mi 0.1 \
+  --mi-ramp-type ramp_down \
   --use-weighted-sampler \
   --crop-body \
   --grad-clip 1.0 \
