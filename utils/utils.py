@@ -20,6 +20,15 @@ def get_loss_weight(epoch, warmup_epochs, ramp_up_epochs, final_weight):
     else:
         return final_weight
 
+def get_loss_weight_rampdown(epoch, ramp_down_epochs, final_weight):
+    """Calculates a loss weight that ramps down from final_weight to 0."""
+    if ramp_down_epochs == 0:
+        return final_weight
+    if epoch < ramp_down_epochs:
+        return final_weight * (ramp_down_epochs - epoch) / ramp_down_epochs
+    else:
+        return 0.0
+
 def get_class_counts(annotation_file):
     """Reads an annotation file and returns the number of samples for each class."""
     labels = []

@@ -25,4 +25,4 @@ update_log.md
 # Temporary Scripts
 run_daisee.sh
 debug_dataloader_*.py
-train_daisee_local.sh
+train_daisee_local.sh.DS_Store

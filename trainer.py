@@ -8,7 +8,7 @@ import os
 import torchvision
 import sys
 
-from utils.utils import AverageMeter, get_loss_weight
+from utils.utils import AverageMeter, get_loss_weight, get_loss_weight_rampdown
 from utils.loss import SemanticLDLLoss
 
 class Trainer:
@@ -16,7 +16,7 @@ class Trainer:
     def __init__(self, model, criterion, optimizer, scheduler, device,log_txt_path, 
                  mi_criterion=None, lambda_mi=0, 
                  dc_criterion=None, lambda_dc=0,
-                 mi_warmup=0, mi_ramp=0,
+                 mi_warmup=0, mi_ramp=0, mi_ramp_type='ramp_up',
                  dc_warmup=0, dc_ramp=0, use_amp=False, grad_clip=1.0, mixup_alpha=0.0,
                  use_ldl=False, ldl_warmup=0):
         self.model = model
@@ -32,6 +32,7 @@ class Trainer:
         self.lambda_dc = lambda_dc
         self.mi_warmup = mi_warmup
         self.mi_ramp = mi_ramp
+        self.mi_ramp_type = mi_ramp_type
         self.dc_warmup = dc_warmup
         self.dc_ramp = dc_ramp
         self.use_amp = use_amp
@@ -104,7 +105,14 @@ class Trainer:
 
         # Print weights at the start of training epoch
         if is_train:
-            mi_weight = get_loss_weight(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
+            if self.mi_ramp_type == 'ramp_up':
+                mi_weight = get_loss_weight(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
+            elif self.mi_ramp_type == 'ramp_down':
+                # Note: rampdown doesn't use mi_warmup, it starts immediately.
+                mi_weight = get_loss_weight_rampdown(int(epoch_str), self.mi_ramp, self.lambda_mi)
+            else:
+                mi_weight = self.lambda_mi # Fallback to the final weight
+
             dc_weight = get_loss_weight(int(epoch_str), self.dc_warmup, self.dc_ramp, self.lambda_dc)
             
             # Determine effective LDL weight (warmup)
@@ -201,13 +209,11 @@ class Trainer:
                     loss = classification_loss
 
                     if is_train and self.mi_criterion is not None:
-                        mi_weight = get_loss_weight(int(epoch_str), self.mi_warmup, self.mi_ramp, self.lambda_mi)
                         mi_loss = self.mi_criterion(processed_learnable_text_features, hand_crafted_text_features)
                         loss += mi_weight * mi_loss
                         mi_losses.update(mi_loss.item(), target.size(0))
 
                     if is_train and self.dc_criterion is not None:
-                        dc_weight = get_loss_weight(int(epoch_str), self.dc_warmup, self.dc_ramp, self.lambda_dc)
                         dc_loss = self.dc_criterion(processed_learnable_text_features)
                         loss += dc_weight * dc_loss
                         dc_losses.update(dc_loss.item(), target.size(0))
