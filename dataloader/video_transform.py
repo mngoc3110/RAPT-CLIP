@@ -337,8 +337,9 @@ class ColorJitter(object):
             # Apply to all images
             jittered_clip = []
             for img in clip:
+                jittered_img = img
                 for func in img_transforms:
-                    jittered_img = func(img)
+                    jittered_img = func(jittered_img)
                 jittered_clip.append(jittered_img)
 
         else:

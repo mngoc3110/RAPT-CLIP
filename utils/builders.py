@@ -5,11 +5,9 @@ from typing import Tuple
 import os
 import torch
 import torch.utils.data
-from clip import clip
+from models.clip import clip
 
 from dataloader.video_dataloader import train_data_loader, test_data_loader
-from dataloader.ckplus_dataloader import ckplus_train_data_loader, ckplus_test_data_loader
-from dataloader.daisee_dataloader import daisee_train_data_loader, daisee_test_data_loader
 from models.Generate_Model import GenerateModel
 from models.Text import *
 from utils.utils import *
@@ -17,7 +15,8 @@ from utils.utils import *
 
 def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
     print("Loading pretrained CLIP model...")
-    CLIP_model, _ = clip.load(args.clip_path, device='cpu')
+    # Pass drop_path_rate to clip.load so it can be used during model construction
+    CLIP_model, _ = clip.load(args.clip_path, device='cpu', drop_path=args.drop_path_rate)
 
     print("\nInput Text Prompts:")
     # Handle the case where input_text is a list of lists for prompt ensembling
@@ -37,7 +36,7 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
 
     # Freeze CLIP image encoder if lr_image_encoder is 0
     # Otherwise, make it trainable.
-    if args.lr_image_encoder > 0:
+    if args.lr_image_encoder > 0 and not args.freeze_image_encoder:
         for name, param in model.named_parameters():
             if "image_encoder" in name:
                 param.requires_grad = True
@@ -119,74 +118,39 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     # Debug print
     print(f"DEBUG: args.dataset = '{args.dataset}'")
 
-    if args.dataset.strip() == "CK+" or args.dataset.strip() == "SFER":
-        print(f"=> Using {args.dataset} specific dataloader...")
-        train_data = ckplus_train_data_loader(
-            root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size
-        )
-        val_data = ckplus_test_data_loader(
-            root_dir=args.root_dir, list_file=val_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size
-        )
-        test_data = ckplus_test_data_loader(
-            root_dir=args.root_dir, list_file=test_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size
-        )
-    elif args.dataset.strip() == "DAiSEE":
-        print(f"=> Using DAiSEE smart dataloader...")
-        train_data = daisee_train_data_loader(
-            root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,
-            bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body, num_classes=num_classes
-        )
-        val_data = daisee_test_data_loader(
-            root_dir=args.root_dir, list_file=val_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,
-            bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body, num_classes=num_classes
-        )
-        test_data = daisee_test_data_loader(
-            root_dir=args.root_dir, list_file=test_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,
-            bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body, num_classes=num_classes
-        )
-    else:
-        print(f"Loading train data (Standard) for {args.dataset}...")
-        train_data = train_data_loader(
-            root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,dataset_name=args.dataset,
-            bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body,
-            num_classes=num_classes
-        )
-        
-        print(f"Loading validation data (Standard) for {args.dataset}...")
-        val_data = test_data_loader(
-            root_dir=args.root_dir, list_file=val_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,
-            bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body,
-            num_classes=num_classes
-        )
+    print(f"Loading train data (Standard) for {args.dataset}...")
+    train_data = train_data_loader(
+        root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
+        duration=args.duration, image_size=args.image_size,dataset_name=args.dataset,
+        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        crop_body=args.crop_body,
+        num_classes=num_classes
+    )
+    
+    print(f"Loading validation data (Standard) for {args.dataset}...")
+    val_data = test_data_loader(
+        root_dir=args.root_dir, list_file=val_annotation_file_path, num_segments=args.num_segments,
+        duration=args.duration, image_size=args.image_size,
+        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        crop_body=args.crop_body,
+        num_classes=num_classes
+    )
 
-        print(f"Loading test data (Standard) for {args.dataset}...")
-        test_data = test_data_loader(
-            root_dir=args.root_dir, list_file=test_annotation_file_path, num_segments=args.num_segments,
-            duration=args.duration, image_size=args.image_size,
-            bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
-            crop_body=args.crop_body,
-            num_classes=num_classes
-        )
+    print(f"Loading test data (Standard) for {args.dataset}...")
+    test_data = test_data_loader(
+        root_dir=args.root_dir, list_file=test_annotation_file_path, num_segments=args.num_segments,
+        duration=args.duration, image_size=args.image_size,
+        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        crop_body=args.crop_body,
+        num_classes=num_classes
+    )
 
     print(f"Total number of training images: {len(train_data)}")
     print("Creating DataLoader instances...")
     
     sampler = None
     shuffle = True
-    if args.use_weighted_sampler and args.dataset != "CK+": # Disable weighted sampler for CK+ for now or implement if needed
+    if args.use_weighted_sampler:
         print("=> Using WeightedRandomSampler.")
         class_counts = get_class_counts(train_annotation_file_path)
         class_weights = 1. / torch.tensor(class_counts, dtype=torch.float)

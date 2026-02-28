@@ -3,7 +3,7 @@ from models.Temporal_Model import *
 from models.Prompt_Learner import *
 from models.Text import class_descriptor_5_only_face
 from models.Adapter import Adapter
-from clip import clip
+from models.clip import clip
 import copy
 import itertools
 
@@ -27,6 +27,12 @@ class GenerateModel(nn.Module):
         self.text_encoder = TextEncoder(clip_model)
         self.dtype = clip_model.dtype
         self.image_encoder = clip_model.visual
+
+        # Freeze Image Encoder if requested
+        if hasattr(args, 'freeze_image_encoder') and args.freeze_image_encoder:
+            print("=> Freezing Image Encoder")
+            for param in self.image_encoder.parameters():
+                param.requires_grad = False
 
         # For EAA
         self.face_adapter = Adapter(c_in=512, reduction=4)

@@ -20,7 +20,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import warnings
-from clip import clip
+from models.clip import clip
 from dataloader.video_dataloader import train_data_loader, test_data_loader
 from models.Generate_Model import GenerateModel
 from models.Text import *
@@ -120,6 +120,8 @@ model_group.add_argument('--use-moco', action='store_true', help='Use MoCoRank f
 model_group.add_argument('--moco-k', type=int, default=4096, help='Queue size for MoCo.')
 model_group.add_argument('--moco-m', type=float, default=0.99, help='Momentum for MoCo.')
 model_group.add_argument('--moco-t', type=float, default=0.07, help='Temperature for MoCo.')
+model_group.add_argument('--drop-path-rate', type=float, default=0.0, help='Drop Path rate for Stochastic Depth.')
+model_group.add_argument('--freeze-image-encoder', action='store_true', help='Freeze the image encoder.')
 
 # ==================== Helper Functions ====================
 def setup_environment(args: argparse.Namespace) -> argparse.Namespace:
@@ -192,6 +194,18 @@ def run_training(args: argparse.Namespace) -> None:
     # Build model
     print("=> Building model...")
     class_names, input_text = get_class_info(args)
+    # Pass drop_path_rate to build_model via args or kwargs if build_model accepted it,
+    # but build_model is imported from utils.builders? No, it's imported from utils.builders in main, BUT
+    # utils.builders usually imports it from models.clip.model or defines it.
+    # Let's check imports in main.py:
+    # from models.Generate_Model import GenerateModel
+    # from utils.builders import *
+    # ...
+    # Wait, build_model is called in main.py: model = build_model(args, input_text)
+    # This build_model is NOT the one in models/clip/model.py.
+    # The one in models/clip/model.py is for building CLIP from state_dict.
+    # The one in main.py is likely a wrapper in utils/builders.py.
+    # I need to check utils/builders.py first.
     model = build_model(args, input_text)
     model = model.to(args.device)
     print("=> Model built and moved to device successfully.")

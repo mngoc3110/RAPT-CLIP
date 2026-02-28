@@ -3,7 +3,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python main.py \
   --mode train \
-  --exper-name Ablation-RAER-FULL_fix_parameter_fullface_train_test \
+  --exper-name Ablation-RAER-DropPath \
   --dataset RAER \
   --gpu 0 \
   --epochs 20 \
@@ -43,4 +43,5 @@ python main.py \
   --use-weighted-sampler \
   --crop-body \
   --grad-clip 1.0 \
-  --mixup-alpha 0.0
+  --mixup-alpha 0.0 \
+  --drop-path-rate 0.1

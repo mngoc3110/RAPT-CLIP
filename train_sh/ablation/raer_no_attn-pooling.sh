@@ -1,11 +1,16 @@
 #!/bin/bash
-# ABLATION: NO MIXUP
+# ABLATION: FULL PIPELINE
+# - Loss: LDAM
+# - Sampler: Weighted
+# - Mixup: 0.0
+# - Adapter: Learned
+# - Prompt: Tuning (CoOp)
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python main.py \
   --mode train \
-  --exper-name Ablation-RAER-NoMixup \
+  --exper-name Ablation-RAER-FULL \
   --dataset RAER \
   --gpu 0 \
   --epochs 20 \
