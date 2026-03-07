@@ -129,6 +129,8 @@ bash train_sh/ablation/raer_full.sh
 | RAER-prompt-details | Chỉ dùng prompt descriptors | 68.62 |
 | RAER-CLS-TOKEN | Dùng CLS token thay attention pooling | 67.45 |
 
+> **Ghi chú:** `ramp-down` đạt UAR cao hơn `ramp-up` 0.05% trong standard evaluation (73.81% vs 73.76%). Tuy nhiên, khi áp dụng **Test-Time Augmentation (TTA)**, `ramp-up` lại cho kết quả cao hơn nhờ model generalize tốt hơn với augmented inputs. Xem phần [TTA](#test-time-augmentation-tta) bên dưới.
+
 #### Training Curves & Confusion Matrix
 
 Sau khi train xong, các file đánh giá được lưu trong mỗi folder output:
@@ -189,9 +191,12 @@ python main.py \
 
 ### Test-Time Augmentation (TTA)
 
-TTA sử dụng nhiều augmented versions của mỗi test sample để cải thiện prediction:
+TTA sử dụng nhiều augmented versions của mỗi test sample (flip, crop, color jitter...) rồi lấy trung bình predictions để cải thiện độ chính xác.
+
+> **Lưu ý quan trọng:** Mặc dù `ramp-down` đạt UAR cao hơn `ramp-up` 0.05% trong standard evaluation, nhưng khi áp dụng TTA, **`ramp-up` lại cho kết quả cao hơn**. Điều này cho thấy model ramp-up generalize tốt hơn với các augmented inputs, trong khi ramp-down có thể hơi overfit vào distribution gốc.
 
 ```bash
+# Chạy TTA trên model ramp-up (cho kết quả tốt nhất với TTA)
 python eval_tta.py \
   --checkpoint outputs/RAER-ramp-up/model_best.pth \
   --dataset RAER \
