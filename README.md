@@ -256,13 +256,18 @@ python run_thesis_gradcam_v2.py
 
 **Output:** `outputs/thesis_assets_v2/` — mỗi sample có GRID gồm: Original + Face Heatmap + Body Heatmap + Context Heatmap.
 
+#### Ví dụ GradCAM cho 5 classes (tất cả predict đúng):
+
 <p align="center">
-  <img src="outputs/thesis_assets_v2/sample_0_true_Fatigue_pred_Fatigue_GRID.jpg" width="48%" />
-  <img src="outputs/thesis_assets_v2/sample_60_true_Enjoyment_pred_Enjoyment_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_521_true_Neutrality_pred_Neutrality_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_424_true_Enjoyment_pred_Enjoyment_GRID.jpg" width="48%" />
 </p>
 <p align="center">
-  <img src="outputs/thesis_assets_v2/sample_100_true_Distraction_pred_Distraction_GRID.jpg" width="48%" />
-  <img src="outputs/thesis_assets_v2/sample_7_true_Enjoyment_pred_Enjoyment_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_328_true_Confusion_pred_Confusion_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_210_true_Fatigue_pred_Fatigue_GRID.jpg" width="48%" />
+</p>
+<p align="center">
+  <img src="outputs/thesis_assets_v2/sample_484_true_Distraction_pred_Distraction_GRID.jpg" width="48%" />
 </p>
 
 ---
