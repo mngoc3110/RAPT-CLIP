@@ -8,18 +8,9 @@ Framework nhận diện cảm xúc học tập (Academic Emotion Recognition) d�
 
 ## 🌟 Tổng Quan Kiến Trúc
 
-```
-Input Video
-    ├── Face Stream ──→ CLIP ViT-B/16 + Face Adapter ──→ Temporal Transformer ──→ Face Features
-    │                                                                               │
-    └── Body Stream ──→ CLIP ViT-B/16 ─────────────────→ Temporal Transformer ──→ Body Features
-                                                                                    │
-                                                                          Feature Fusion (Concat)
-                                                                                    │
-                                                                            Projection FC ──→ Logits
-                                                                                    │
-                                                            Cosine Similarity with Text Features (Prompt Learner)
-```
+<p align="center">
+  <img src="image/model.png" width="100%" />
+</p>
 
 ### Thành phần chính
 
