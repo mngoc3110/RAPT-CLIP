@@ -1,0 +1,1488 @@
+mode = train
+eval_checkpoint = None
+resume = None
+exper_name = EMOTIC-Full-ASL-Cosine
+dataset = EMOTIC
+gpu = 0
+workers = 4
+seed = 42
+root_dir = emotic_dataset/cvpr_emotic
+train_annotation = emotic_dataset/train_bbox.txt
+val_annotation = emotic_dataset/test_bbox.txt
+test_annotation = emotic_dataset/test_bbox.txt
+clip_path = ViT-B/16
+bounding_box_face = emotic_dataset/emotic_face_bboxes_mtcnn.json
+bounding_box_body = emotic_dataset/emotic_body_bboxes.json
+epochs = 30
+batch_size = 32
+print_freq = 50
+use_amp = True
+grad_clip = 1.0
+optimizer = AdamW
+lr = 3e-05
+lr_image_encoder = 1e-06
+lr_prompt_learner = 0.0002
+lr_adapter = 3e-05
+weight_decay = 0.01
+momentum = 0.9
+milestones = [10, 15]
+gamma = 0.1
+scheduler = cosine
+warmup_epochs = 3
+loss_type = ldam
+lambda_mi = 0.05
+lambda_dc = 0.1
+mi_warmup = 5
+mi_ramp = 10
+dc_warmup = 5
+dc_ramp = 10
+use_weighted_sampler = False
+label_smoothing = 0.0
+use_ldl = False
+ldl_temperature = 1.0
+ldl_warmup = 5
+mixup_alpha = 0.0
+ldam_max_m = 0.5
+ldam_s = 30.0
+use_asl = True
+asl_gamma_neg = 4.0
+asl_gamma_pos = 0.0
+asl_clip = 0.05
+use_ema = True
+ema_decay = 0.999
+use_tta = True
+text_type = prompt_ensemble
+temporal_layers = 1
+contexts_number = 16
+class_token_position = end
+class_specific_contexts = True
+load_and_tune_prompt_learner = True
+num_segments = 1
+duration = 1
+image_size = 224
+temperature = 0.07
+crop_body = True
+use_moco = False
+moco_k = 4096
+moco_m = 0.99
+moco_t = 0.07
+device = cuda:0
+name = EMOTIC-Full-ASL-Cosine-[03-06]-[16:19]
+output_path = outputs/EMOTIC-Full-ASL-Cosine-[03-06]-[16:19]
+**************************************************
+
+******************** Epoch: 0 ********************
+Current learning rates: 3.0e-06 3.0e-06 1.0e-07 2.0e-05 3.0e-06 3.0e-06
+--- Epoch 0: MI=0.0000, DC=0.0000 ---
+Current mAP: 14.799
+Current mAP: 12.342
+Per-class AP:
+  Affection: 7.24%
+  Anger: 5.28%
+  Annoyance: 8.26%
+  Anticipation: 33.19%
+  Aversion: 3.22%
+  Confidence: 32.77%
+  Disapproval: 9.84%
+  Disconnection: 6.02%
+  Disquietment: 5.24%
+  Doubt/Confusion: 8.19%
+  Embarrassment: 1.13%
+  Engagement: 51.32%
+  Esteem: 5.90%
+  Excitement: 34.24%
+  Fatigue: 5.24%
+  Fear: 2.58%
+  Happiness: 35.92%
+  Pain: 5.37%
+  Peace: 7.82%
+  Pleasure: 16.52%
+  Sadness: 14.04%
+  Sensitivity: 3.27%
+  Suffering: 5.59%
+  Surprise: 2.35%
+  Sympathy: 6.89%
+  Yearning: 3.46%
+Bottom-5 weakest classes:
+  Embarrassment: 1.13%
+  Surprise: 2.35%
+  Fear: 2.58%
+  Aversion: 3.22%
+  Sensitivity: 3.27%
+
+--- Epoch 0 Summary ---
+Train mAP: 14.80%
+Valid mAP: 12.34%
+Best Valid mAP so far: 12.34%
+Time: 5174.77s
+--- End of Epoch 0 ---
+
+
+******************** Epoch: 1 ********************
+Current learning rates: 1.2e-05 1.2e-05 4.0e-07 8.0e-05 1.2e-05 1.2e-05
+--- Epoch 1: MI=0.0000, DC=0.0000 ---
+Current mAP: 22.318
+Current mAP: 22.366
+Per-class AP:
+  Affection: 31.42%
+  Anger: 27.84%
+  Annoyance: 20.68%
+  Anticipation: 41.28%
+  Aversion: 7.69%
+  Confidence: 43.49%
+  Disapproval: 17.19%
+  Disconnection: 11.41%
+  Disquietment: 12.74%
+  Doubt/Confusion: 14.96%
+  Embarrassment: 1.50%
+  Engagement: 58.92%
+  Esteem: 7.75%
+  Excitement: 47.25%
+  Fatigue: 11.05%
+  Fear: 6.85%
+  Happiness: 60.90%
+  Pain: 12.90%
+  Peace: 14.38%
+  Pleasure: 27.11%
+  Sadness: 47.48%
+  Sensitivity: 6.79%
+  Suffering: 30.89%
+  Surprise: 4.10%
+  Sympathy: 10.68%
+  Yearning: 4.27%
+Bottom-5 weakest classes:
+  Embarrassment: 1.50%
+  Surprise: 4.10%
+  Yearning: 4.27%
+  Sensitivity: 6.79%
+  Fear: 6.85%
+
+--- Epoch 1 Summary ---
+Train mAP: 22.32%
+Valid mAP: 22.37%
+Best Valid mAP so far: 22.37%
+Time: 197.49s
+--- End of Epoch 1 ---
+
+
+******************** Epoch: 2 ********************
+Current learning rates: 2.1e-05 2.1e-05 7.0e-07 1.4e-04 2.1e-05 2.1e-05
+--- Epoch 2: MI=0.0000, DC=0.0000 ---
+Current mAP: 25.217
+Current mAP: 27.558
+Per-class AP:
+  Affection: 42.56%
+  Anger: 43.94%
+  Annoyance: 26.71%
+  Anticipation: 43.94%
+  Aversion: 8.58%
+  Confidence: 46.31%
+  Disapproval: 20.44%
+  Disconnection: 17.00%
+  Disquietment: 15.74%
+  Doubt/Confusion: 18.25%
+  Embarrassment: 1.81%
+  Engagement: 64.18%
+  Esteem: 9.80%
+  Excitement: 51.28%
+  Fatigue: 17.48%
+  Fear: 11.43%
+  Happiness: 68.56%
+  Pain: 19.22%
+  Peace: 18.66%
+  Pleasure: 33.18%
+  Sadness: 56.76%
+  Sensitivity: 9.42%
+  Suffering: 44.68%
+  Surprise: 7.87%
+  Sympathy: 12.82%
+  Yearning: 5.89%
+Bottom-5 weakest classes:
+  Embarrassment: 1.81%
+  Yearning: 5.89%
+  Surprise: 7.87%
+  Aversion: 8.58%
+  Sensitivity: 9.42%
+
+--- Epoch 2 Summary ---
+Train mAP: 25.22%
+Valid mAP: 27.56%
+Best Valid mAP so far: 27.56%
+Time: 240.88s
+--- End of Epoch 2 ---
+
+
+******************** Epoch: 3 ********************
+Current learning rates: 3.0e-05 3.0e-05 1.0e-06 2.0e-04 3.0e-05 3.0e-05
+--- Epoch 3: MI=0.0000, DC=0.0000 ---
+Current mAP: 27.563
+Current mAP: 29.326
+Per-class AP:
+  Affection: 43.75%
+  Anger: 48.73%
+  Annoyance: 30.25%
+  Anticipation: 44.61%
+  Aversion: 10.39%
+  Confidence: 46.94%
+  Disapproval: 21.26%
+  Disconnection: 18.45%
+  Disquietment: 16.67%
+  Doubt/Confusion: 20.69%
+  Embarrassment: 2.37%
+  Engagement: 65.55%
+  Esteem: 10.41%
+  Excitement: 51.94%
+  Fatigue: 21.40%
+  Fear: 13.91%
+  Happiness: 70.68%
+  Pain: 22.03%
+  Peace: 20.54%
+  Pleasure: 34.79%
+  Sadness: 59.04%
+  Sensitivity: 10.15%
+  Suffering: 47.89%
+  Surprise: 9.47%
+  Sympathy: 13.85%
+  Yearning: 6.70%
+Bottom-5 weakest classes:
+  Embarrassment: 2.37%
+  Yearning: 6.70%
+  Surprise: 9.47%
+  Sensitivity: 10.15%
+  Aversion: 10.39%
+
+--- Epoch 3 Summary ---
+Train mAP: 27.56%
+Valid mAP: 29.33%
+Best Valid mAP so far: 29.33%
+Time: 243.04s
+--- End of Epoch 3 ---
+
+
+******************** Epoch: 4 ********************
+Current learning rates: 3.0e-05 3.0e-05 1.0e-06 2.0e-04 3.0e-05 3.0e-05
+--- Epoch 4: MI=0.0000, DC=0.0000 ---
+Current mAP: 29.676
+Current mAP: 30.202
+Per-class AP:
+  Affection: 44.01%
+  Anger: 50.14%
+  Annoyance: 31.37%
+  Anticipation: 45.29%
+  Aversion: 10.91%
+  Confidence: 47.63%
+  Disapproval: 22.14%
+  Disconnection: 19.19%
+  Disquietment: 16.73%
+  Doubt/Confusion: 21.33%
+  Embarrassment: 2.65%
+  Engagement: 66.02%
+  Esteem: 10.76%
+  Excitement: 52.20%
+  Fatigue: 23.90%
+  Fear: 17.24%
+  Happiness: 71.48%
+  Pain: 22.11%
+  Peace: 21.59%
+  Pleasure: 35.26%
+  Sadness: 59.85%
+  Sensitivity: 10.93%
+  Suffering: 49.38%
+  Surprise: 11.78%
+  Sympathy: 14.72%
+  Yearning: 6.63%
+Bottom-5 weakest classes:
+  Embarrassment: 2.65%
+  Yearning: 6.63%
+  Esteem: 10.76%
+  Aversion: 10.91%
+  Sensitivity: 10.93%
+
+--- Epoch 4 Summary ---
+Train mAP: 29.68%
+Valid mAP: 30.20%
+Best Valid mAP so far: 30.20%
+Time: 239.69s
+--- End of Epoch 4 ---
+
+
+******************** Epoch: 5 ********************
+Current learning rates: 3.0e-05 3.0e-05 9.9e-07 2.0e-04 3.0e-05 3.0e-05
+--- Epoch 5: MI=0.0000, DC=0.0000 ---
+Current mAP: 31.722
+Current mAP: 30.768
+Per-class AP:
+  Affection: 43.80%
+  Anger: 50.64%
+  Annoyance: 32.16%
+  Anticipation: 45.74%
+  Aversion: 11.58%
+  Confidence: 47.99%
+  Disapproval: 22.96%
+  Disconnection: 19.15%
+  Disquietment: 17.08%
+  Doubt/Confusion: 22.51%
+  Embarrassment: 3.27%
+  Engagement: 66.19%
+  Esteem: 11.05%
+  Excitement: 52.24%
+  Fatigue: 24.98%
+  Fear: 17.89%
+  Happiness: 71.75%
+  Pain: 23.17%
+  Peace: 22.52%
+  Pleasure: 35.40%
+  Sadness: 60.23%
+  Sensitivity: 11.20%
+  Suffering: 49.92%
+  Surprise: 14.04%
+  Sympathy: 15.48%
+  Yearning: 7.00%
+Bottom-5 weakest classes:
+  Embarrassment: 3.27%
+  Yearning: 7.00%
+  Esteem: 11.05%
+  Sensitivity: 11.20%
+  Aversion: 11.58%
+
+--- Epoch 5 Summary ---
+Train mAP: 31.72%
+Valid mAP: 30.77%
+Best Valid mAP so far: 30.77%
+Time: 242.27s
+--- End of Epoch 5 ---
+
+
+******************** Epoch: 6 ********************
+Current learning rates: 2.9e-05 2.9e-05 9.7e-07 1.9e-04 2.9e-05 2.9e-05
+--- Epoch 6: MI=0.0050, DC=0.0100 ---
+Current mAP: 31.624
+Current mAP: 31.102
+Per-class AP:
+  Affection: 43.52%
+  Anger: 50.69%
+  Annoyance: 32.55%
+  Anticipation: 45.59%
+  Aversion: 11.34%
+  Confidence: 47.55%
+  Disapproval: 23.15%
+  Disconnection: 19.02%
+  Disquietment: 17.35%
+  Doubt/Confusion: 24.08%
+  Embarrassment: 3.85%
+  Engagement: 66.23%
+  Esteem: 10.79%
+  Excitement: 52.03%
+  Fatigue: 24.81%
+  Fear: 18.61%
+  Happiness: 71.78%
+  Pain: 25.19%
+  Peace: 22.93%
+  Pleasure: 35.28%
+  Sadness: 61.01%
+  Sensitivity: 11.33%
+  Suffering: 50.25%
+  Surprise: 16.54%
+  Sympathy: 15.59%
+  Yearning: 7.59%
+Bottom-5 weakest classes:
+  Embarrassment: 3.85%
+  Yearning: 7.59%
+  Esteem: 10.79%
+  Sensitivity: 11.33%
+  Aversion: 11.34%
+
+--- Epoch 6 Summary ---
+Train mAP: 31.62%
+Valid mAP: 31.10%
+Best Valid mAP so far: 31.10%
+Time: 249.25s
+--- End of Epoch 6 ---
+
+
+******************** Epoch: 7 ********************
+Current learning rates: 2.8e-05 2.8e-05 9.5e-07 1.9e-04 2.8e-05 2.8e-05
+--- Epoch 7: MI=0.0100, DC=0.0200 ---
+Current mAP: 33.877
+Current mAP: 31.199
+Per-class AP:
+  Affection: 43.12%
+  Anger: 51.14%
+  Annoyance: 32.24%
+  Anticipation: 45.63%
+  Aversion: 10.81%
+  Confidence: 47.10%
+  Disapproval: 24.05%
+  Disconnection: 19.91%
+  Disquietment: 17.70%
+  Doubt/Confusion: 23.81%
+  Embarrassment: 4.06%
+  Engagement: 66.19%
+  Esteem: 10.65%
+  Excitement: 51.58%
+  Fatigue: 24.90%
+  Fear: 18.26%
+  Happiness: 71.72%
+  Pain: 26.77%
+  Peace: 22.45%
+  Pleasure: 35.15%
+  Sadness: 60.94%
+  Sensitivity: 11.33%
+  Suffering: 49.90%
+  Surprise: 18.49%
+  Sympathy: 15.66%
+  Yearning: 7.61%
+Bottom-5 weakest classes:
+  Embarrassment: 4.06%
+  Yearning: 7.61%
+  Esteem: 10.65%
+  Aversion: 10.81%
+  Sensitivity: 11.33%
+
+--- Epoch 7 Summary ---
+Train mAP: 33.88%
+Valid mAP: 31.20%
+Best Valid mAP so far: 31.20%
+Time: 239.86s
+--- End of Epoch 7 ---
+
+
+******************** Epoch: 8 ********************
+Current learning rates: 2.8e-05 2.8e-05 9.3e-07 1.8e-04 2.8e-05 2.8e-05
+--- Epoch 8: MI=0.0150, DC=0.0300 ---
+Current mAP: 35.688
+Current mAP: 31.203
+Per-class AP:
+  Affection: 42.68%
+  Anger: 51.38%
+  Annoyance: 31.24%
+  Anticipation: 45.77%
+  Aversion: 10.73%
+  Confidence: 47.02%
+  Disapproval: 24.43%
+  Disconnection: 20.48%
+  Disquietment: 17.14%
+  Doubt/Confusion: 23.05%
+  Embarrassment: 4.26%
+  Engagement: 66.04%
+  Esteem: 10.63%
+  Excitement: 51.70%
+  Fatigue: 25.35%
+  Fear: 17.81%
+  Happiness: 71.70%
+  Pain: 26.63%
+  Peace: 22.24%
+  Pleasure: 34.80%
+  Sadness: 60.78%
+  Sensitivity: 11.75%
+  Suffering: 51.61%
+  Surprise: 18.73%
+  Sympathy: 15.81%
+  Yearning: 7.53%
+Bottom-5 weakest classes:
+  Embarrassment: 4.26%
+  Yearning: 7.53%
+  Esteem: 10.63%
+  Aversion: 10.73%
+  Sensitivity: 11.75%
+
+--- Epoch 8 Summary ---
+Train mAP: 35.69%
+Valid mAP: 31.20%
+Best Valid mAP so far: 31.20%
+Time: 244.04s
+--- End of Epoch 8 ---
+
+
+******************** Epoch: 9 ********************
+Current learning rates: 2.7e-05 2.7e-05 8.9e-07 1.8e-04 2.7e-05 2.7e-05
+--- Epoch 9: MI=0.0200, DC=0.0400 ---
+Current mAP: 38.322
+Current mAP: 30.987
+Per-class AP:
+  Affection: 42.54%
+  Anger: 51.37%
+  Annoyance: 30.45%
+  Anticipation: 45.63%
+  Aversion: 10.77%
+  Confidence: 46.78%
+  Disapproval: 24.91%
+  Disconnection: 20.51%
+  Disquietment: 16.88%
+  Doubt/Confusion: 22.24%
+  Embarrassment: 4.37%
+  Engagement: 65.84%
+  Esteem: 10.51%
+  Excitement: 51.47%
+  Fatigue: 25.12%
+  Fear: 18.24%
+  Happiness: 71.54%
+  Pain: 25.98%
+  Peace: 22.01%
+  Pleasure: 34.42%
+  Sadness: 60.59%
+  Sensitivity: 11.69%
+  Suffering: 50.72%
+  Surprise: 18.06%
+  Sympathy: 15.56%
+  Yearning: 7.46%
+Bottom-5 weakest classes:
+  Embarrassment: 4.37%
+  Yearning: 7.46%
+  Esteem: 10.51%
+  Aversion: 10.77%
+  Sensitivity: 11.69%
+
+--- Epoch 9 Summary ---
+Train mAP: 38.32%
+Valid mAP: 30.99%
+Best Valid mAP so far: 31.20%
+Time: 238.07s
+--- End of Epoch 9 ---
+
+
+******************** Epoch: 10 ********************
+Current learning rates: 2.5e-05 2.5e-05 8.6e-07 1.7e-04 2.5e-05 2.5e-05
+--- Epoch 10: MI=0.0250, DC=0.0500 ---
+Current mAP: 41.545
+Current mAP: 30.891
+Per-class AP:
+  Affection: 42.08%
+  Anger: 51.13%
+  Annoyance: 29.78%
+  Anticipation: 45.60%
+  Aversion: 10.71%
+  Confidence: 46.24%
+  Disapproval: 24.85%
+  Disconnection: 20.66%
+  Disquietment: 16.50%
+  Doubt/Confusion: 21.49%
+  Embarrassment: 5.54%
+  Engagement: 65.57%
+  Esteem: 10.53%
+  Excitement: 51.21%
+  Fatigue: 24.63%
+  Fear: 18.66%
+  Happiness: 71.25%
+  Pain: 27.79%
+  Peace: 21.61%
+  Pleasure: 34.13%
+  Sadness: 60.68%
+  Sensitivity: 11.28%
+  Suffering: 51.70%
+  Surprise: 17.10%
+  Sympathy: 15.15%
+  Yearning: 7.29%
+Bottom-5 weakest classes:
+  Embarrassment: 5.54%
+  Yearning: 7.29%
+  Esteem: 10.53%
+  Aversion: 10.71%
+  Sensitivity: 11.28%
+
+--- Epoch 10 Summary ---
+Train mAP: 41.54%
+Valid mAP: 30.89%
+Best Valid mAP so far: 31.20%
+Time: 211.11s
+--- End of Epoch 10 ---
+
+
+******************** Epoch: 11 ********************
+Current learning rates: 2.4e-05 2.4e-05 8.2e-07 1.6e-04 2.4e-05 2.4e-05
+--- Epoch 11: MI=0.0300, DC=0.0600 ---
+Current mAP: 43.722
+Current mAP: 30.642
+Per-class AP:
+  Affection: 41.68%
+  Anger: 50.60%
+  Annoyance: 29.73%
+  Anticipation: 45.42%
+  Aversion: 10.55%
+  Confidence: 45.84%
+  Disapproval: 25.81%
+  Disconnection: 20.59%
+  Disquietment: 16.16%
+  Doubt/Confusion: 21.22%
+  Embarrassment: 5.62%
+  Engagement: 65.23%
+  Esteem: 10.14%
+  Excitement: 50.85%
+  Fatigue: 24.41%
+  Fear: 19.45%
+  Happiness: 70.88%
+  Pain: 27.63%
+  Peace: 21.62%
+  Pleasure: 33.53%
+  Sadness: 59.89%
+  Sensitivity: 10.75%
+  Suffering: 50.67%
+  Surprise: 16.22%
+  Sympathy: 15.08%
+  Yearning: 7.15%
+Bottom-5 weakest classes:
+  Embarrassment: 5.62%
+  Yearning: 7.15%
+  Esteem: 10.14%
+  Aversion: 10.55%
+  Sensitivity: 10.75%
+
+--- Epoch 11 Summary ---
+Train mAP: 43.72%
+Valid mAP: 30.64%
+Best Valid mAP so far: 31.20%
+Time: 211.89s
+--- End of Epoch 11 ---
+
+
+******************** Epoch: 12 ********************
+Current learning rates: 2.3e-05 2.3e-05 7.8e-07 1.5e-04 2.3e-05 2.3e-05
+--- Epoch 12: MI=0.0350, DC=0.0700 ---
+Current mAP: 46.483
+Current mAP: 30.225
+Per-class AP:
+  Affection: 41.21%
+  Anger: 49.66%
+  Annoyance: 28.83%
+  Anticipation: 45.11%
+  Aversion: 10.52%
+  Confidence: 45.09%
+  Disapproval: 25.08%
+  Disconnection: 20.04%
+  Disquietment: 15.67%
+  Doubt/Confusion: 20.74%
+  Embarrassment: 4.46%
+  Engagement: 64.95%
+  Esteem: 10.04%
+  Excitement: 50.57%
+  Fatigue: 24.27%
+  Fear: 19.95%
+  Happiness: 70.42%
+  Pain: 27.76%
+  Peace: 21.31%
+  Pleasure: 32.87%
+  Sadness: 59.61%
+  Sensitivity: 10.38%
+  Suffering: 49.91%
+  Surprise: 15.82%
+  Sympathy: 14.73%
+  Yearning: 6.85%
+Bottom-5 weakest classes:
+  Embarrassment: 4.46%
+  Yearning: 6.85%
+  Esteem: 10.04%
+  Sensitivity: 10.38%
+  Aversion: 10.52%
+
+--- Epoch 12 Summary ---
+Train mAP: 46.48%
+Valid mAP: 30.23%
+Best Valid mAP so far: 31.20%
+Time: 212.23s
+--- End of Epoch 12 ---
+
+
+******************** Epoch: 13 ********************
+Current learning rates: 2.1e-05 2.1e-05 7.3e-07 1.4e-04 2.1e-05 2.1e-05
+--- Epoch 13: MI=0.0400, DC=0.0800 ---
+Current mAP: 49.477
+Current mAP: 29.723
+Per-class AP:
+  Affection: 40.48%
+  Anger: 48.03%
+  Annoyance: 28.25%
+  Anticipation: 44.80%
+  Aversion: 10.23%
+  Confidence: 44.25%
+  Disapproval: 24.64%
+  Disconnection: 19.61%
+  Disquietment: 15.03%
+  Doubt/Confusion: 20.51%
+  Embarrassment: 3.95%
+  Engagement: 64.49%
+  Esteem: 9.68%
+  Excitement: 50.27%
+  Fatigue: 24.17%
+  Fear: 19.60%
+  Happiness: 69.95%
+  Pain: 27.46%
+  Peace: 20.95%
+  Pleasure: 32.44%
+  Sadness: 58.72%
+  Sensitivity: 9.97%
+  Suffering: 50.11%
+  Surprise: 14.29%
+  Sympathy: 14.20%
+  Yearning: 6.68%
+Bottom-5 weakest classes:
+  Embarrassment: 3.95%
+  Yearning: 6.68%
+  Esteem: 9.68%
+  Sensitivity: 9.97%
+  Aversion: 10.23%
+
+--- Epoch 13 Summary ---
+Train mAP: 49.48%
+Valid mAP: 29.72%
+Best Valid mAP so far: 31.20%
+Time: 213.98s
+--- End of Epoch 13 ---
+
+
+******************** Epoch: 14 ********************
+Current learning rates: 1.9e-05 1.9e-05 6.8e-07 1.3e-04 1.9e-05 1.9e-05
+--- Epoch 14: MI=0.0450, DC=0.0900 ---
+Current mAP: 51.781
+Current mAP: 29.351
+Per-class AP:
+  Affection: 40.06%
+  Anger: 47.54%
+  Annoyance: 28.05%
+  Anticipation: 44.42%
+  Aversion: 10.53%
+  Confidence: 43.46%
+  Disapproval: 24.02%
+  Disconnection: 19.36%
+  Disquietment: 14.70%
+  Doubt/Confusion: 20.08%
+  Embarrassment: 4.25%
+  Engagement: 64.17%
+  Esteem: 9.35%
+  Excitement: 49.85%
+  Fatigue: 23.72%
+  Fear: 18.59%
+  Happiness: 69.42%
+  Pain: 27.35%
+  Peace: 20.76%
+  Pleasure: 32.08%
+  Sadness: 58.31%
+  Sensitivity: 9.55%
+  Suffering: 50.04%
+  Surprise: 13.24%
+  Sympathy: 13.53%
+  Yearning: 6.68%
+Bottom-5 weakest classes:
+  Embarrassment: 4.25%
+  Yearning: 6.68%
+  Esteem: 9.35%
+  Sensitivity: 9.55%
+  Aversion: 10.53%
+
+--- Epoch 14 Summary ---
+Train mAP: 51.78%
+Valid mAP: 29.35%
+Best Valid mAP so far: 31.20%
+Time: 215.94s
+--- End of Epoch 14 ---
+
+
+******************** Epoch: 15 ********************
+Current learning rates: 1.8e-05 1.8e-05 6.3e-07 1.2e-04 1.8e-05 1.8e-05
+--- Epoch 15: MI=0.0500, DC=0.1000 ---
+Current mAP: 54.819
+Current mAP: 28.993
+Per-class AP:
+  Affection: 39.47%
+  Anger: 47.33%
+  Annoyance: 27.80%
+  Anticipation: 43.91%
+  Aversion: 10.66%
+  Confidence: 42.89%
+  Disapproval: 24.25%
+  Disconnection: 18.81%
+  Disquietment: 14.26%
+  Doubt/Confusion: 19.64%
+  Embarrassment: 4.08%
+  Engagement: 63.81%
+  Esteem: 9.24%
+  Excitement: 49.60%
+  Fatigue: 23.59%
+  Fear: 17.95%
+  Happiness: 68.83%
+  Pain: 27.35%
+  Peace: 20.36%
+  Pleasure: 31.65%
+  Sadness: 57.58%
+  Sensitivity: 9.19%
+  Suffering: 49.34%
+  Surprise: 12.63%
+  Sympathy: 12.94%
+  Yearning: 6.67%
+Bottom-5 weakest classes:
+  Embarrassment: 4.08%
+  Yearning: 6.67%
+  Sensitivity: 9.19%
+  Esteem: 9.24%
+  Aversion: 10.66%
+
+--- Epoch 15 Summary ---
+Train mAP: 54.82%
+Valid mAP: 28.99%
+Best Valid mAP so far: 31.20%
+Time: 212.03s
+--- End of Epoch 15 ---
+
+
+******************** Epoch: 16 ********************
+Current learning rates: 1.6e-05 1.6e-05 5.8e-07 1.1e-04 1.6e-05 1.6e-05
+--- Epoch 16: MI=0.0500, DC=0.1000 ---
+Current mAP: 57.557
+Current mAP: 28.636
+Per-class AP:
+  Affection: 38.88%
+  Anger: 47.49%
+  Annoyance: 27.45%
+  Anticipation: 43.69%
+  Aversion: 10.29%
+  Confidence: 42.38%
+  Disapproval: 23.45%
+  Disconnection: 18.41%
+  Disquietment: 13.80%
+  Doubt/Confusion: 19.11%
+  Embarrassment: 3.82%
+  Engagement: 63.47%
+  Esteem: 9.14%
+  Excitement: 49.38%
+  Fatigue: 23.11%
+  Fear: 17.67%
+  Happiness: 68.32%
+  Pain: 27.28%
+  Peace: 20.00%
+  Pleasure: 31.19%
+  Sadness: 56.82%
+  Sensitivity: 8.94%
+  Suffering: 48.93%
+  Surprise: 12.49%
+  Sympathy: 12.38%
+  Yearning: 6.65%
+Bottom-5 weakest classes:
+  Embarrassment: 3.82%
+  Yearning: 6.65%
+  Sensitivity: 8.94%
+  Esteem: 9.14%
+  Aversion: 10.29%
+
+--- Epoch 16 Summary ---
+Train mAP: 57.56%
+Valid mAP: 28.64%
+Best Valid mAP so far: 31.20%
+Time: 214.97s
+--- End of Epoch 16 ---
+
+
+******************** Epoch: 17 ********************
+Current learning rates: 1.4e-05 1.4e-05 5.2e-07 9.4e-05 1.4e-05 1.4e-05
+--- Epoch 17: MI=0.0500, DC=0.1000 ---
+Current mAP: 59.066
+Current mAP: 28.299
+Per-class AP:
+  Affection: 38.30%
+  Anger: 47.56%
+  Annoyance: 26.87%
+  Anticipation: 43.35%
+  Aversion: 10.05%
+  Confidence: 41.85%
+  Disapproval: 23.21%
+  Disconnection: 18.14%
+  Disquietment: 13.61%
+  Doubt/Confusion: 18.39%
+  Embarrassment: 3.80%
+  Engagement: 63.16%
+  Esteem: 9.00%
+  Excitement: 49.04%
+  Fatigue: 22.69%
+  Fear: 16.51%
+  Happiness: 67.94%
+  Pain: 26.49%
+  Peace: 19.67%
+  Pleasure: 30.93%
+  Sadness: 56.22%
+  Sensitivity: 8.64%
+  Suffering: 48.96%
+  Surprise: 12.76%
+  Sympathy: 12.04%
+  Yearning: 6.57%
+Bottom-5 weakest classes:
+  Embarrassment: 3.80%
+  Yearning: 6.57%
+  Sensitivity: 8.64%
+  Esteem: 9.00%
+  Aversion: 10.05%
+
+--- Epoch 17 Summary ---
+Train mAP: 59.07%
+Valid mAP: 28.30%
+Best Valid mAP so far: 31.20%
+Time: 215.19s
+--- End of Epoch 17 ---
+
+
+******************** Epoch: 18 ********************
+Current learning rates: 1.2e-05 1.2e-05 4.7e-07 8.3e-05 1.2e-05 1.2e-05
+--- Epoch 18: MI=0.0500, DC=0.1000 ---
+Current mAP: 61.110
+Current mAP: 27.979
+Per-class AP:
+  Affection: 37.77%
+  Anger: 47.84%
+  Annoyance: 26.33%
+  Anticipation: 43.00%
+  Aversion: 9.78%
+  Confidence: 41.30%
+  Disapproval: 23.30%
+  Disconnection: 17.74%
+  Disquietment: 13.33%
+  Doubt/Confusion: 17.84%
+  Embarrassment: 3.56%
+  Engagement: 62.91%
+  Esteem: 8.77%
+  Excitement: 48.69%
+  Fatigue: 22.53%
+  Fear: 15.76%
+  Happiness: 67.63%
+  Pain: 25.49%
+  Peace: 19.48%
+  Pleasure: 30.67%
+  Sadness: 55.96%
+  Sensitivity: 8.33%
+  Suffering: 48.54%
+  Surprise: 12.66%
+  Sympathy: 11.69%
+  Yearning: 6.53%
+Bottom-5 weakest classes:
+  Embarrassment: 3.56%
+  Yearning: 6.53%
+  Sensitivity: 8.33%
+  Esteem: 8.77%
+  Aversion: 9.78%
+
+--- Epoch 18 Summary ---
+Train mAP: 61.11%
+Valid mAP: 27.98%
+Best Valid mAP so far: 31.20%
+Time: 214.77s
+--- End of Epoch 18 ---
+
+
+******************** Epoch: 19 ********************
+Current learning rates: 1.1e-05 1.1e-05 4.2e-07 7.1e-05 1.1e-05 1.1e-05
+--- Epoch 19: MI=0.0500, DC=0.1000 ---
+Current mAP: 63.273
+Current mAP: 27.715
+Per-class AP:
+  Affection: 37.32%
+  Anger: 47.85%
+  Annoyance: 25.95%
+  Anticipation: 42.66%
+  Aversion: 9.48%
+  Confidence: 40.90%
+  Disapproval: 23.26%
+  Disconnection: 17.48%
+  Disquietment: 13.08%
+  Doubt/Confusion: 17.57%
+  Embarrassment: 3.13%
+  Engagement: 62.67%
+  Esteem: 8.66%
+  Excitement: 48.41%
+  Fatigue: 22.60%
+  Fear: 15.42%
+  Happiness: 67.28%
+  Pain: 25.75%
+  Peace: 19.42%
+  Pleasure: 30.37%
+  Sadness: 55.49%
+  Sensitivity: 8.21%
+  Suffering: 47.27%
+  Surprise: 12.55%
+  Sympathy: 11.35%
+  Yearning: 6.46%
+Bottom-5 weakest classes:
+  Embarrassment: 3.13%
+  Yearning: 6.46%
+  Sensitivity: 8.21%
+  Esteem: 8.66%
+  Aversion: 9.48%
+
+--- Epoch 19 Summary ---
+Train mAP: 63.27%
+Valid mAP: 27.72%
+Best Valid mAP so far: 31.20%
+Time: 213.45s
+--- End of Epoch 19 ---
+
+
+******************** Epoch: 20 ********************
+Current learning rates: 9.1e-06 9.1e-06 3.7e-07 6.0e-05 9.1e-06 9.1e-06
+--- Epoch 20: MI=0.0500, DC=0.1000 ---
+Current mAP: 63.935
+Current mAP: 27.425
+Per-class AP:
+  Affection: 36.98%
+  Anger: 47.63%
+  Annoyance: 25.70%
+  Anticipation: 42.45%
+  Aversion: 9.22%
+  Confidence: 40.53%
+  Disapproval: 22.73%
+  Disconnection: 17.28%
+  Disquietment: 12.75%
+  Doubt/Confusion: 17.22%
+  Embarrassment: 2.91%
+  Engagement: 62.52%
+  Esteem: 8.63%
+  Excitement: 48.18%
+  Fatigue: 22.20%
+  Fear: 14.70%
+  Happiness: 67.04%
+  Pain: 25.39%
+  Peace: 19.19%
+  Pleasure: 30.20%
+  Sadness: 54.96%
+  Sensitivity: 8.06%
+  Suffering: 47.24%
+  Surprise: 11.90%
+  Sympathy: 11.01%
+  Yearning: 6.43%
+Bottom-5 weakest classes:
+  Embarrassment: 2.91%
+  Yearning: 6.43%
+  Sensitivity: 8.06%
+  Esteem: 8.63%
+  Aversion: 9.22%
+
+--- Epoch 20 Summary ---
+Train mAP: 63.93%
+Valid mAP: 27.42%
+Best Valid mAP so far: 31.20%
+Time: 215.48s
+--- End of Epoch 20 ---
+
+
+******************** Epoch: 21 ********************
+Current learning rates: 7.6e-06 7.6e-06 3.3e-07 5.0e-05 7.6e-06 7.6e-06
+--- Epoch 21: MI=0.0500, DC=0.1000 ---
+Current mAP: 65.970
+Current mAP: 27.210
+Per-class AP:
+  Affection: 36.64%
+  Anger: 47.31%
+  Annoyance: 25.47%
+  Anticipation: 42.33%
+  Aversion: 9.01%
+  Confidence: 40.19%
+  Disapproval: 22.13%
+  Disconnection: 16.95%
+  Disquietment: 12.50%
+  Doubt/Confusion: 17.02%
+  Embarrassment: 3.21%
+  Engagement: 62.24%
+  Esteem: 8.63%
+  Excitement: 47.97%
+  Fatigue: 22.09%
+  Fear: 14.57%
+  Happiness: 66.81%
+  Pain: 24.95%
+  Peace: 19.05%
+  Pleasure: 30.05%
+  Sadness: 54.51%
+  Sensitivity: 7.99%
+  Suffering: 46.95%
+  Surprise: 11.55%
+  Sympathy: 10.83%
+  Yearning: 6.48%
+Bottom-5 weakest classes:
+  Embarrassment: 3.21%
+  Yearning: 6.48%
+  Sensitivity: 7.99%
+  Esteem: 8.63%
+  Aversion: 9.01%
+
+--- Epoch 21 Summary ---
+Train mAP: 65.97%
+Valid mAP: 27.21%
+Best Valid mAP so far: 31.20%
+Time: 215.40s
+--- End of Epoch 21 ---
+
+
+******************** Epoch: 22 ********************
+Current learning rates: 6.1e-06 6.1e-06 2.8e-07 4.0e-05 6.1e-06 6.1e-06
+--- Epoch 22: MI=0.0500, DC=0.1000 ---
+Current mAP: 67.380
+Current mAP: 27.023
+Per-class AP:
+  Affection: 36.39%
+  Anger: 47.24%
+  Annoyance: 25.21%
+  Anticipation: 42.16%
+  Aversion: 8.95%
+  Confidence: 39.88%
+  Disapproval: 21.00%
+  Disconnection: 16.67%
+  Disquietment: 12.47%
+  Doubt/Confusion: 16.94%
+  Embarrassment: 3.05%
+  Engagement: 62.08%
+  Esteem: 8.59%
+  Excitement: 47.88%
+  Fatigue: 22.12%
+  Fear: 14.50%
+  Happiness: 66.61%
+  Pain: 24.87%
+  Peace: 18.98%
+  Pleasure: 29.83%
+  Sadness: 54.32%
+  Sensitivity: 7.89%
+  Suffering: 46.48%
+  Surprise: 11.30%
+  Sympathy: 10.72%
+  Yearning: 6.46%
+Bottom-5 weakest classes:
+  Embarrassment: 3.05%
+  Yearning: 6.46%
+  Sensitivity: 7.89%
+  Esteem: 8.59%
+  Aversion: 8.95%
+
+--- Epoch 22 Summary ---
+Train mAP: 67.38%
+Valid mAP: 27.02%
+Best Valid mAP so far: 31.20%
+Time: 212.08s
+--- End of Epoch 22 ---
+
+
+******************** Epoch: 23 ********************
+Current learning rates: 4.8e-06 4.8e-06 2.4e-07 3.1e-05 4.8e-06 4.8e-06
+--- Epoch 23: MI=0.0500, DC=0.1000 ---
+Current mAP: 68.446
+Current mAP: 26.825
+Per-class AP:
+  Affection: 36.09%
+  Anger: 47.05%
+  Annoyance: 24.70%
+  Anticipation: 41.97%
+  Aversion: 8.78%
+  Confidence: 39.64%
+  Disapproval: 20.27%
+  Disconnection: 16.46%
+  Disquietment: 12.25%
+  Doubt/Confusion: 16.52%
+  Embarrassment: 2.88%
+  Engagement: 61.99%
+  Esteem: 8.56%
+  Excitement: 47.88%
+  Fatigue: 22.05%
+  Fear: 14.16%
+  Happiness: 66.41%
+  Pain: 24.66%
+  Peace: 18.81%
+  Pleasure: 29.75%
+  Sadness: 54.02%
+  Sensitivity: 7.77%
+  Suffering: 46.44%
+  Surprise: 11.29%
+  Sympathy: 10.53%
+  Yearning: 6.52%
+Bottom-5 weakest classes:
+  Embarrassment: 2.88%
+  Yearning: 6.52%
+  Sensitivity: 7.77%
+  Esteem: 8.56%
+  Aversion: 8.78%
+
+--- Epoch 23 Summary ---
+Train mAP: 68.45%
+Valid mAP: 26.82%
+Best Valid mAP so far: 31.20%
+Time: 215.21s
+--- End of Epoch 23 ---
+
+
+******************** Epoch: 24 ********************
+Current learning rates: 3.6e-06 3.6e-06 2.1e-07 2.3e-05 3.6e-06 3.6e-06
+--- Epoch 24: MI=0.0500, DC=0.1000 ---
+Current mAP: 69.022
+Current mAP: 26.713
+Per-class AP:
+  Affection: 35.85%
+  Anger: 47.01%
+  Annoyance: 24.50%
+  Anticipation: 41.92%
+  Aversion: 8.68%
+  Confidence: 39.36%
+  Disapproval: 20.39%
+  Disconnection: 16.57%
+  Disquietment: 12.04%
+  Doubt/Confusion: 16.37%
+  Embarrassment: 2.82%
+  Engagement: 61.83%
+  Esteem: 8.55%
+  Excitement: 47.71%
+  Fatigue: 22.00%
+  Fear: 13.81%
+  Happiness: 66.25%
+  Pain: 24.65%
+  Peace: 18.67%
+  Pleasure: 29.61%
+  Sadness: 54.01%
+  Sensitivity: 7.81%
+  Suffering: 46.04%
+  Surprise: 11.24%
+  Sympathy: 10.40%
+  Yearning: 6.45%
+Bottom-5 weakest classes:
+  Embarrassment: 2.82%
+  Yearning: 6.45%
+  Sensitivity: 7.81%
+  Esteem: 8.55%
+  Aversion: 8.68%
+
+--- Epoch 24 Summary ---
+Train mAP: 69.02%
+Valid mAP: 26.71%
+Best Valid mAP so far: 31.20%
+Time: 215.17s
+--- End of Epoch 24 ---
+
+
+******************** Epoch: 25 ********************
+Current learning rates: 2.6e-06 2.6e-06 1.7e-07 1.7e-05 2.6e-06 2.6e-06
+--- Epoch 25: MI=0.0500, DC=0.1000 ---
+Current mAP: 69.658
+Current mAP: 26.635
+Per-class AP:
+  Affection: 35.74%
+  Anger: 47.02%
+  Annoyance: 24.64%
+  Anticipation: 41.73%
+  Aversion: 8.51%
+  Confidence: 39.18%
+  Disapproval: 20.33%
+  Disconnection: 16.59%
+  Disquietment: 11.92%
+  Doubt/Confusion: 16.15%
+  Embarrassment: 2.78%
+  Engagement: 61.70%
+  Esteem: 8.52%
+  Excitement: 47.65%
+  Fatigue: 21.91%
+  Fear: 13.45%
+  Happiness: 66.14%
+  Pain: 24.69%
+  Peace: 18.66%
+  Pleasure: 29.57%
+  Sadness: 53.93%
+  Sensitivity: 7.81%
+  Suffering: 46.11%
+  Surprise: 11.05%
+  Sympathy: 10.33%
+  Yearning: 6.41%
+Bottom-5 weakest classes:
+  Embarrassment: 2.78%
+  Yearning: 6.41%
+  Sensitivity: 7.81%
+  Aversion: 8.51%
+  Esteem: 8.52%
+
+--- Epoch 25 Summary ---
+Train mAP: 69.66%
+Valid mAP: 26.64%
+Best Valid mAP so far: 31.20%
+Time: 211.74s
+--- End of Epoch 25 ---
+
+
+******************** Epoch: 26 ********************
+Current learning rates: 1.7e-06 1.7e-06 1.5e-07 1.1e-05 1.7e-06 1.7e-06
+--- Epoch 26: MI=0.0500, DC=0.1000 ---
+Current mAP: 70.308
+Current mAP: 26.511
+Per-class AP:
+  Affection: 35.51%
+  Anger: 46.95%
+  Annoyance: 24.47%
+  Anticipation: 41.68%
+  Aversion: 8.47%
+  Confidence: 39.07%
+  Disapproval: 20.26%
+  Disconnection: 16.49%
+  Disquietment: 11.85%
+  Doubt/Confusion: 16.06%
+  Embarrassment: 2.76%
+  Engagement: 61.61%
+  Esteem: 8.49%
+  Excitement: 47.65%
+  Fatigue: 21.82%
+  Fear: 13.13%
+  Happiness: 66.06%
+  Pain: 24.23%
+  Peace: 18.63%
+  Pleasure: 29.50%
+  Sadness: 53.66%
+  Sensitivity: 7.80%
+  Suffering: 45.47%
+  Surprise: 10.89%
+  Sympathy: 10.32%
+  Yearning: 6.46%
+Bottom-5 weakest classes:
+  Embarrassment: 2.76%
+  Yearning: 6.46%
+  Sensitivity: 7.80%
+  Aversion: 8.47%
+  Esteem: 8.49%
+
+--- Epoch 26 Summary ---
+Train mAP: 70.31%
+Valid mAP: 26.51%
+Best Valid mAP so far: 31.20%
+Time: 214.64s
+--- End of Epoch 26 ---
+
+
+******************** Epoch: 27 ********************
+Current learning rates: 1.0e-06 1.0e-06 1.3e-07 6.1e-06 1.0e-06 1.0e-06
+--- Epoch 27: MI=0.0500, DC=0.1000 ---
+Current mAP: 71.134
+Current mAP: 26.436
+Per-class AP:
+  Affection: 35.42%
+  Anger: 46.86%
+  Annoyance: 24.37%
+  Anticipation: 41.53%
+  Aversion: 8.50%
+  Confidence: 38.98%
+  Disapproval: 20.38%
+  Disconnection: 16.51%
+  Disquietment: 11.80%
+  Doubt/Confusion: 15.99%
+  Embarrassment: 2.76%
+  Engagement: 61.52%
+  Esteem: 8.46%
+  Excitement: 47.60%
+  Fatigue: 21.76%
+  Fear: 12.94%
+  Happiness: 65.95%
+  Pain: 24.26%
+  Peace: 18.61%
+  Pleasure: 29.42%
+  Sadness: 53.31%
+  Sensitivity: 7.85%
+  Suffering: 45.09%
+  Surprise: 10.72%
+  Sympathy: 10.27%
+  Yearning: 6.46%
+Bottom-5 weakest classes:
+  Embarrassment: 2.76%
+  Yearning: 6.46%
+  Sensitivity: 7.85%
+  Esteem: 8.46%
+  Aversion: 8.50%
+
+--- Epoch 27 Summary ---
+Train mAP: 71.13%
+Valid mAP: 26.44%
+Best Valid mAP so far: 31.20%
+Time: 213.11s
+--- End of Epoch 27 ---
+
+
+******************** Epoch: 28 ********************
+Current learning rates: 5.0e-07 5.0e-07 1.1e-07 2.8e-06 5.0e-07 5.0e-07
+--- Epoch 28: MI=0.0500, DC=0.1000 ---
+Current mAP: 71.230
+Current mAP: 26.389
+Per-class AP:
+  Affection: 35.38%
+  Anger: 46.89%
+  Annoyance: 24.34%
+  Anticipation: 41.45%
+  Aversion: 8.44%
+  Confidence: 38.90%
+  Disapproval: 20.74%
+  Disconnection: 16.50%
+  Disquietment: 11.88%
+  Doubt/Confusion: 15.95%
+  Embarrassment: 2.76%
+  Engagement: 61.48%
+  Esteem: 8.43%
+  Excitement: 47.55%
+  Fatigue: 21.78%
+  Fear: 12.71%
+  Happiness: 65.84%
+  Pain: 23.80%
+  Peace: 18.59%
+  Pleasure: 29.34%
+  Sadness: 53.15%
+  Sensitivity: 7.86%
+  Suffering: 45.07%
+  Surprise: 10.64%
+  Sympathy: 10.20%
+  Yearning: 6.43%
+Bottom-5 weakest classes:
+  Embarrassment: 2.76%
+  Yearning: 6.43%
+  Sensitivity: 7.86%
+  Esteem: 8.43%
+  Aversion: 8.44%
+
+--- Epoch 28 Summary ---
+Train mAP: 71.23%
+Valid mAP: 26.39%
+Best Valid mAP so far: 31.20%
+Time: 215.94s
+--- End of Epoch 28 ---
+
+
+******************** Epoch: 29 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-07 7.8e-07 2.0e-07 2.0e-07
+--- Epoch 29: MI=0.0500, DC=0.1000 ---
+Current mAP: 71.612
+Current mAP: 26.324
+Per-class AP:
+  Affection: 35.25%
+  Anger: 46.69%
+  Annoyance: 24.14%
+  Anticipation: 41.35%
+  Aversion: 8.34%
+  Confidence: 38.90%
+  Disapproval: 20.89%
+  Disconnection: 16.48%
+  Disquietment: 11.84%
+  Doubt/Confusion: 15.86%
+  Embarrassment: 2.76%
+  Engagement: 61.45%
+  Esteem: 8.42%
+  Excitement: 47.48%
+  Fatigue: 21.76%
+  Fear: 12.36%
+  Happiness: 65.70%
+  Pain: 23.63%
+  Peace: 18.56%
+  Pleasure: 29.29%
+  Sadness: 53.21%
+  Sensitivity: 7.80%
+  Suffering: 44.97%
+  Surprise: 10.71%
+  Sympathy: 10.16%
+  Yearning: 6.42%
+Bottom-5 weakest classes:
+  Embarrassment: 2.76%
+  Yearning: 6.42%
+  Sensitivity: 7.80%
+  Aversion: 8.34%
+  Esteem: 8.42%
+
+--- Epoch 29 Summary ---
+Train mAP: 71.61%
+Valid mAP: 26.32%
+Best Valid mAP so far: 31.20%
+Time: 212.84s
+--- End of Epoch 29 ---
+
+
+TTA mAP: 26.582
+
+==================================================
+FINAL TEST mAP (with TTA): 26.58%
+==================================================

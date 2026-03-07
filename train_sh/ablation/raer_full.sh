@@ -6,15 +6,15 @@ python main.py \
   --exper-name Ablation-RAER-FULL_fix_parameter_fullface_train_test \
   --dataset RAER \
   --gpu 0 \
-  --epochs 20 \
-  --batch-size 4 \
+  --epochs 25 \
+  --batch-size 16 \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \
   --lr-prompt-learner 3e-4 \
   --lr-adapter 1e-4 \
   --weight-decay 0.005 \
-  --milestones 10 15 \
+  --milestones 10 15 20 \
   --gamma 0.1 \
   --temporal-layers 1 \
   --num-segments 16 \
@@ -22,13 +22,13 @@ python main.py \
   --image-size 224 \
   --seed 42 \
   --print-freq 50 \
-  --root-dir /kaggle/input/datasets/bearmn/raer-video-emotion-dataset \
-  --train-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt \
-  --val-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
-  --test-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
+  --root-dir ./ \
+  --train-annotation ./RAER/annotation/train.txt \
+  --val-annotation ./RAER/annotation/test.txt \
+  --test-annotation ./RAER/annotation/test.txt \
   --clip-path ViT-B/16 \
-  --bounding-box-face /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/face.json \
-  --bounding-box-body /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/body.json \
+  --bounding-box-face ./RAER/bounding_box/face.json \
+  --bounding-box-body ./RAER/bounding_box/body.json \
   --text-type prompt_ensemble \
   --contexts-number 8 \
   --class-token-position end \

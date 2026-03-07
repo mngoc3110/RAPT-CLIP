@@ -1,0 +1,3 @@
+Normal (Both Face & Body)     : 78.79%
+Masked Face (Zeros)           : 66.29%
+Masked Body (Zeros)           : 38.45%

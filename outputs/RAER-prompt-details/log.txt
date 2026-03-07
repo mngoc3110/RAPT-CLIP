@@ -1,0 +1,632 @@
+mode = train
+eval_checkpoint = None
+resume = None
+exper_name = prompt_detail
+dataset = RAER
+gpu = 0
+workers = 4
+seed = 42
+root_dir = /kaggle/input/datasets/bearmn/raer-video-emotion-dataset
+train_annotation = /kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt
+val_annotation = /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt
+test_annotation = /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt
+clip_path = ViT-B/16
+bounding_box_face = /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/face.json
+bounding_box_body = /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/body.json
+epochs = 20
+batch_size = 4
+print_freq = 50
+use_amp = True
+grad_clip = 1.0
+optimizer = AdamW
+lr = 2e-05
+lr_image_encoder = 1e-06
+lr_prompt_learner = 0.0003
+lr_adapter = 0.0001
+weight_decay = 0.005
+momentum = 0.9
+milestones = [10, 15]
+gamma = 0.1
+loss_type = ldam
+lambda_mi = 0.1
+lambda_dc = 0.1
+mi_warmup = 5
+mi_ramp = 10
+dc_warmup = 5
+dc_ramp = 10
+use_weighted_sampler = True
+label_smoothing = 0.05
+use_ldl = False
+ldl_temperature = 1.0
+ldl_warmup = 5
+mixup_alpha = 0.0
+ldam_max_m = 0.5
+ldam_s = 30.0
+text_type = class_descriptor
+temporal_pooling = attn_pool
+temporal_layers = 1
+contexts_number = 8
+class_token_position = end
+class_specific_contexts = True
+load_and_tune_prompt_learner = True
+num_segments = 16
+duration = 1
+image_size = 224
+temperature = 0.07
+crop_body = True
+use_moco = False
+moco_k = 4096
+moco_m = 0.99
+moco_t = 0.07
+device = cuda:0
+name = prompt_detail-[02-16]-[01:54]
+output_path = outputs/prompt_detail-[02-16]-[01:54]
+**************************************************
+
+******************** Epoch: 0 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 0: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 51.274
+Current UAR: 51.554
+Current WAR: 42.235
+Current UAR: 56.584
+
+--- Epoch 0 Summary ---
+Train WAR: 51.27% | Train UAR: 51.55%
+Valid WAR: 42.23% | Valid UAR: 56.58%
+Best Valid UAR so far: 56.58%
+Time: 1398.53s
+Train Confusion Matrix:
+[[ 93  91  72  67 107]
+ [ 60 211  41  46  57]
+ [ 30  28 304  18  19]
+ [ 31  42  31 291  48]
+ [ 67  73  43  62 188]]
+Validation Confusion Matrix:
+[[ 82  33  12  11 207]
+ [  0  22   1   1   8]
+ [  2   0   3   0   2]
+ [  2   0   2  23  12]
+ [  2   7   0   3  93]]
+--- End of Epoch 0 ---
+
+
+******************** Epoch: 1 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 1: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 74.906
+Current UAR: 75.505
+Current WAR: 59.280
+Current UAR: 61.470
+
+--- Epoch 1 Summary ---
+Train WAR: 74.91% | Train UAR: 75.50%
+Valid WAR: 59.28% | Valid UAR: 61.47%
+Best Valid UAR so far: 61.47%
+Time: 1396.20s
+Train Confusion Matrix:
+[[186  56  35  38 116]
+ [ 23 380   3   4  18]
+ [  6   0 400   2   1]
+ [ 21  15   6 340  13]
+ [ 78  59   9  29 282]]
+Validation Confusion Matrix:
+[[180   6  18  30 111]
+ [  5  17   0   3   7]
+ [  1   0   3   2   1]
+ [  4   0   1  32   2]
+ [ 16   0   0   8  81]]
+--- End of Epoch 1 ---
+
+
+******************** Epoch: 2 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 2: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 80.802
+Current UAR: 80.674
+Current WAR: 64.015
+Current UAR: 66.396
+
+--- Epoch 2 Summary ---
+Train WAR: 80.80% | Train UAR: 80.67%
+Valid WAR: 64.02% | Valid UAR: 66.40%
+Best Valid UAR so far: 66.40%
+Time: 1397.16s
+Train Confusion Matrix:
+[[219  35  21  27 111]
+ [ 19 380   0   4   9]
+ [  6   0 431   0   0]
+ [ 16   3   2 388  15]
+ [ 74  30   7  28 295]]
+Validation Confusion Matrix:
+[[205  36   9  27  68]
+ [  2  25   0   2   3]
+ [  1   1   3   1   1]
+ [  2   1   1  32   3]
+ [ 13  12   0   7  73]]
+--- End of Epoch 2 ---
+
+
+******************** Epoch: 3 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 3: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 85.425
+Current UAR: 85.633
+Current WAR: 65.341
+Current UAR: 63.375
+
+--- Epoch 3 Summary ---
+Train WAR: 85.42% | Train UAR: 85.63%
+Valid WAR: 65.34% | Valid UAR: 63.38%
+Best Valid UAR so far: 66.40%
+Time: 1399.53s
+Train Confusion Matrix:
+[[288  29  16  19  81]
+ [ 11 375   0   1  13]
+ [  1   0 419   0   0]
+ [ 12   0   0 414   8]
+ [ 74  23   0  21 315]]
+Validation Confusion Matrix:
+[[208  25  11  12  89]
+ [  2  25   0   1   4]
+ [  2   1   2   0   2]
+ [  6   1   0  28   4]
+ [  8  12   0   3  82]]
+--- End of Epoch 3 ---
+
+
+******************** Epoch: 4 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 4: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 88.349
+Current UAR: 87.890
+Current WAR: 67.614
+Current UAR: 62.876
+
+--- Epoch 4 Summary ---
+Train WAR: 88.35% | Train UAR: 87.89%
+Valid WAR: 67.61% | Valid UAR: 62.88%
+Best Valid UAR so far: 66.40%
+Time: 1400.57s
+Train Confusion Matrix:
+[[278  30  12  16  63]
+ [ 13 388   0   1   7]
+ [  1   0 461   0   0]
+ [ 14   3   2 414   4]
+ [ 53  12   0  16 332]]
+Validation Confusion Matrix:
+[[219  18   8   1  99]
+ [  4  21   1   0   6]
+ [  2   0   3   1   1]
+ [  5   1   2  21  10]
+ [  6   5   0   1  93]]
+--- End of Epoch 4 ---
+
+
+******************** Epoch: 5 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 5: MI=0.0000, DC=0.0000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 89.340
+Current UAR: 89.479
+Current WAR: 72.538
+Current UAR: 62.784
+
+--- Epoch 5 Summary ---
+Train WAR: 89.34% | Train UAR: 89.48%
+Valid WAR: 72.54% | Valid UAR: 62.78%
+Best Valid UAR so far: 66.40%
+Time: 1401.16s
+Train Confusion Matrix:
+[[323  20  13  12  71]
+ [ 10 430   0   1   1]
+ [  3   0 430   0   1]
+ [  6   0   0 367   8]
+ [ 50  16   0  14 344]]
+Validation Confusion Matrix:
+[[249  10   5   9  72]
+ [ 10  18   1   0   3]
+ [  3   0   2   1   1]
+ [  5   0   2  30   2]
+ [ 15   1   0   5  84]]
+--- End of Epoch 5 ---
+
+
+******************** Epoch: 6 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 6: MI=0.0100, DC=0.0100, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 90.236
+Current UAR: 90.309
+Current WAR: 69.318
+Current UAR: 67.637
+
+--- Epoch 6 Summary ---
+Train WAR: 90.24% | Train UAR: 90.31%
+Valid WAR: 69.32% | Valid UAR: 67.64%
+Best Valid UAR so far: 67.64%
+Time: 1403.74s
+Train Confusion Matrix:
+[[331  17  12   8  67]
+ [ 11 393   0   0   7]
+ [  2   0 417   0   0]
+ [  6   0   2 423   5]
+ [ 49  10   1  10 349]]
+Validation Confusion Matrix:
+[[249  52  15   7  22]
+ [  3  29   0   0   0]
+ [  3   1   3   0   0]
+ [  4   2   1  32   0]
+ [ 29  18   1   4  53]]
+--- End of Epoch 6 ---
+
+
+******************** Epoch: 7 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 7: MI=0.0200, DC=0.0200, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 90.802
+Current UAR: 91.008
+Current WAR: 70.644
+Current UAR: 65.925
+
+--- Epoch 7 Summary ---
+Train WAR: 90.80% | Train UAR: 91.01%
+Valid WAR: 70.64% | Valid UAR: 65.92%
+Best Valid UAR so far: 67.64%
+Time: 1411.25s
+Train Confusion Matrix:
+[[360  18  11   9  57]
+ [ 10 409   0   0   5]
+ [  4   0 419   0   0]
+ [  8   1   0 387   6]
+ [ 47  11   0   8 350]]
+Validation Confusion Matrix:
+[[270  15  21  21  18]
+ [  4  23   2   3   0]
+ [  2   0   4   1   0]
+ [  6   1   1  31   0]
+ [ 37  10   1  12  45]]
+--- End of Epoch 7 ---
+
+
+******************** Epoch: 8 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 8: MI=0.0300, DC=0.0300, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 92.736
+Current UAR: 92.752
+Current WAR: 77.273
+Current UAR: 65.934
+
+--- Epoch 8 Summary ---
+Train WAR: 92.74% | Train UAR: 92.75%
+Valid WAR: 77.27% | Valid UAR: 65.93%
+Best Valid UAR so far: 67.64%
+Time: 1401.12s
+Train Confusion Matrix:
+[[338  11   8  11  49]
+ [  3 436   0   0   6]
+ [  3   0 410   0   0]
+ [  5   0   1 400   2]
+ [ 38   7   1   9 382]]
+Validation Confusion Matrix:
+[[287   4   5   6  43]
+ [ 12  19   0   0   1]
+ [  3   0   3   1   0]
+ [  6   0   1  31   1]
+ [ 29   4   0   4  68]]
+--- End of Epoch 8 ---
+
+
+******************** Epoch: 9 ********************
+Current learning rates: 2.0e-05 2.0e-05 1.0e-06 3.0e-04 2.0e-05 1.0e-04
+--- Epoch 9: MI=0.0400, DC=0.0400, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 93.066
+Current UAR: 93.041
+Current WAR: 75.758
+Current UAR: 56.880
+
+--- Epoch 9 Summary ---
+Train WAR: 93.07% | Train UAR: 93.04%
+Valid WAR: 75.76% | Valid UAR: 56.88%
+Best Valid UAR so far: 67.64%
+Time: 1399.82s
+Train Confusion Matrix:
+[[350  15   9  11  45]
+ [  6 411   0   0   3]
+ [  1   0 439   1   0]
+ [  4   0   0 410   4]
+ [ 33   8   0   7 363]]
+Validation Confusion Matrix:
+[[271   1   5   0  68]
+ [ 13  15   0   0   4]
+ [  6   0   1   0   0]
+ [ 12   0   1  23   3]
+ [ 13   0   0   2  90]]
+--- End of Epoch 9 ---
+
+
+******************** Epoch: 10 ********************
+Current learning rates: 2.0e-06 2.0e-06 1.0e-07 3.0e-05 2.0e-06 1.0e-05
+--- Epoch 10: MI=0.0500, DC=0.0500, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 95.943
+Current UAR: 95.856
+Current WAR: 81.629
+Current UAR: 67.759
+
+--- Epoch 10 Summary ---
+Train WAR: 95.94% | Train UAR: 95.86%
+Valid WAR: 81.63% | Valid UAR: 67.76%
+Best Valid UAR so far: 67.76%
+Time: 1399.81s
+Train Confusion Matrix:
+[[365   6   4   7  30]
+ [  1 424   0   0   2]
+ [  0   0 441   0   0]
+ [ 12   0   1 417   3]
+ [ 13   2   0   5 387]]
+Validation Confusion Matrix:
+[[296   5   5   5  34]
+ [  8  22   0   0   2]
+ [  4   1   2   0   0]
+ [  5   0   1  31   2]
+ [ 16   4   0   5  80]]
+--- End of Epoch 10 ---
+
+
+******************** Epoch: 11 ********************
+Current learning rates: 2.0e-06 2.0e-06 1.0e-07 3.0e-05 2.0e-06 1.0e-05
+--- Epoch 11: MI=0.0600, DC=0.0600, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 96.557
+Current UAR: 96.477
+Current WAR: 80.871
+Current UAR: 67.470
+
+--- Epoch 11 Summary ---
+Train WAR: 96.56% | Train UAR: 96.48%
+Valid WAR: 80.87% | Valid UAR: 67.47%
+Best Valid UAR so far: 67.76%
+Time: 1401.25s
+Train Confusion Matrix:
+[[378   3   4   5  28]
+ [  0 447   0   0   0]
+ [  0   0 423   0   0]
+ [  3   0   0 419   3]
+ [ 20   1   0   6 380]]
+Validation Confusion Matrix:
+[[290   6   5   5  39]
+ [  7  22   0   1   2]
+ [  4   1   2   0   0]
+ [  6   0   1  30   2]
+ [ 13   3   0   6  83]]
+--- End of Epoch 11 ---
+
+
+******************** Epoch: 12 ********************
+Current learning rates: 2.0e-06 2.0e-06 1.0e-07 3.0e-05 2.0e-06 1.0e-05
+--- Epoch 12: MI=0.0700, DC=0.0700, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.358
+Current UAR: 97.364
+Current WAR: 80.492
+Current UAR: 68.624
+
+--- Epoch 12 Summary ---
+Train WAR: 97.36% | Train UAR: 97.36%
+Valid WAR: 80.49% | Valid UAR: 68.62%
+Best Valid UAR so far: 68.62%
+Time: 1398.90s
+Train Confusion Matrix:
+[[391   2   2   4  25]
+ [  0 404   0   0   0]
+ [  0   0 422   0   1]
+ [  2   0   1 444   2]
+ [  8   3   0   6 403]]
+Validation Confusion Matrix:
+[[280   7   4   9  45]
+ [  6  21   0   2   3]
+ [  4   0   2   1   0]
+ [  5   0   0  32   2]
+ [  8   2   0   5  90]]
+--- End of Epoch 12 ---
+
+
+******************** Epoch: 13 ********************
+Current learning rates: 2.0e-06 2.0e-06 1.0e-07 3.0e-05 2.0e-06 1.0e-05
+--- Epoch 13: MI=0.0800, DC=0.0800, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.453
+Current UAR: 97.452
+Current WAR: 80.303
+Current UAR: 63.797
+
+--- Epoch 13 Summary ---
+Train WAR: 97.45% | Train UAR: 97.45%
+Valid WAR: 80.30% | Valid UAR: 63.80%
+Best Valid UAR so far: 68.62%
+Time: 1396.16s
+Train Confusion Matrix:
+[[383   4   1   5  27]
+ [  0 396   0   0   0]
+ [  0   0 416   0   0]
+ [  2   0   0 458   1]
+ [ 14   0   0   0 413]]
+Validation Confusion Matrix:
+[[306   4   4   6  25]
+ [ 10  19   0   1   2]
+ [  5   0   2   0   0]
+ [  7   0   1  31   0]
+ [ 31   2   0   6  66]]
+--- End of Epoch 13 ---
+
+
+******************** Epoch: 14 ********************
+Current learning rates: 2.0e-06 2.0e-06 1.0e-07 3.0e-05 2.0e-06 1.0e-05
+--- Epoch 14: MI=0.0900, DC=0.0900, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.689
+Current UAR: 97.715
+Current WAR: 80.492
+Current UAR: 66.202
+
+--- Epoch 14 Summary ---
+Train WAR: 97.69% | Train UAR: 97.71%
+Valid WAR: 80.49% | Valid UAR: 66.20%
+Best Valid UAR so far: 68.62%
+Time: 1400.17s
+Train Confusion Matrix:
+[[402   4   2   2  21]
+ [  0 432   0   0   1]
+ [  0   0 416   0   0]
+ [  0   0   0 413   1]
+ [ 14   2   0   2 408]]
+Validation Confusion Matrix:
+[[295   5   5   7  33]
+ [  7  20   0   2   3]
+ [  4   1   2   0   0]
+ [  5   0   1  32   1]
+ [ 20   3   0   6  76]]
+--- End of Epoch 14 ---
+
+
+******************** Epoch: 15 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-08 3.0e-06 2.0e-07 1.0e-06
+--- Epoch 15: MI=0.1000, DC=0.1000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.311
+Current UAR: 97.388
+Current WAR: 80.871
+Current UAR: 65.694
+
+--- Epoch 15 Summary ---
+Train WAR: 97.31% | Train UAR: 97.39%
+Valid WAR: 80.87% | Valid UAR: 65.69%
+Best Valid UAR so far: 68.62%
+Time: 1400.04s
+Train Confusion Matrix:
+[[417   4   0   5  25]
+ [  1 389   0   0   1]
+ [  1   0 417   0   0]
+ [  1   0   0 441   0]
+ [ 15   3   0   1 399]]
+Validation Confusion Matrix:
+[[296   5   5   3  36]
+ [  8  19   0   2   3]
+ [  4   1   2   0   0]
+ [  6   0   1  31   1]
+ [ 21   1   0   4  79]]
+--- End of Epoch 15 ---
+
+
+******************** Epoch: 16 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-08 3.0e-06 2.0e-07 1.0e-06
+--- Epoch 16: MI=0.1000, DC=0.1000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 98.066
+Current UAR: 98.037
+Current WAR: 80.871
+Current UAR: 66.128
+
+--- Epoch 16 Summary ---
+Train WAR: 98.07% | Train UAR: 98.04%
+Valid WAR: 80.87% | Valid UAR: 66.13%
+Best Valid UAR so far: 68.62%
+Time: 1400.08s
+Train Confusion Matrix:
+[[406   2   7   2  14]
+ [  0 433   0   0   0]
+ [  0   0 434   0   0]
+ [  0   0   0 424   1]
+ [ 14   0   0   1 382]]
+Validation Confusion Matrix:
+[[296   5   5   3  36]
+ [  7  20   0   2   3]
+ [  4   1   2   0   0]
+ [  6   0   1  31   1]
+ [ 20   3   0   4  78]]
+--- End of Epoch 16 ---
+
+
+******************** Epoch: 17 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-08 3.0e-06 2.0e-07 1.0e-06
+--- Epoch 17: MI=0.1000, DC=0.1000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.642
+Current UAR: 97.662
+Current WAR: 81.061
+Current UAR: 66.621
+
+--- Epoch 17 Summary ---
+Train WAR: 97.64% | Train UAR: 97.66%
+Valid WAR: 81.06% | Valid UAR: 66.62%
+Best Valid UAR so far: 68.62%
+Time: 1401.26s
+Train Confusion Matrix:
+[[393   2   2   6  21]
+ [  1 413   0   0   1]
+ [  0   0 417   0   0]
+ [  1   0   0 426   0]
+ [ 13   2   0   1 421]]
+Validation Confusion Matrix:
+[[297   5   5   3  35]
+ [  7  21   0   1   3]
+ [  4   1   2   0   0]
+ [  6   0   1  31   1]
+ [ 22   3   0   3  77]]
+--- End of Epoch 17 ---
+
+
+******************** Epoch: 18 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-08 3.0e-06 2.0e-07 1.0e-06
+--- Epoch 18: MI=0.1000, DC=0.1000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 97.783
+Current UAR: 97.832
+Current WAR: 80.871
+Current UAR: 65.466
+
+--- Epoch 18 Summary ---
+Train WAR: 97.78% | Train UAR: 97.83%
+Valid WAR: 80.87% | Valid UAR: 65.47%
+Best Valid UAR so far: 68.62%
+Time: 1403.94s
+Train Confusion Matrix:
+[[408   0   1   2  26]
+ [  0 420   0   0   2]
+ [  0   0 444   0   0]
+ [  1   0   0 384   0]
+ [ 14   1   0   0 417]]
+Validation Confusion Matrix:
+[[301   5   5   3  31]
+ [ 10  20   0   0   2]
+ [  4   1   2   0   0]
+ [  6   0   1  31   1]
+ [ 25   4   0   3  73]]
+--- End of Epoch 18 ---
+
+
+******************** Epoch: 19 ********************
+Current learning rates: 2.0e-07 2.0e-07 1.0e-08 3.0e-06 2.0e-07 1.0e-06
+--- Epoch 19: MI=0.1000, DC=0.1000, LDL_Wt=1.0, MoCo=0.0 ---
+Current WAR: 98.302
+Current UAR: 98.216
+Current WAR: 80.871
+Current UAR: 66.960
+
+--- Epoch 19 Summary ---
+Train WAR: 98.30% | Train UAR: 98.22%
+Valid WAR: 80.87% | Valid UAR: 66.96%
+Best Valid UAR so far: 68.62%
+Time: 1401.37s
+Train Confusion Matrix:
+[[377   1   0   4  16]
+ [  0 449   0   0   1]
+ [  0   0 459   0   0]
+ [  1   0   0 396   3]
+ [  9   1   0   0 403]]
+Validation Confusion Matrix:
+[[293   5   5   3  39]
+ [  7  21   0   1   3]
+ [  4   1   2   0   0]
+ [  6   0   1  31   1]
+ [ 17   4   0   4  80]]
+--- End of Epoch 19 ---
+
+
+************************
+Final Evaluation Results:
+Confusion Matrix Diag (%):
+[81.15942028985508, 65.625, 28.57142857142857, 82.05128205128204, 85.71428571428571]
+UAR: 68.62%
+WAR (Accuracy): 80.49%
+************************

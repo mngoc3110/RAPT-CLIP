@@ -50,6 +50,7 @@ parser.add_argument('--lr-image-encoder', type=float, default=0) # Dummy
 parser.add_argument('--use-weighted-sampler', action='store_true', help='Dummy arg for builder compatibility')
 # New Bias Argument
 parser.add_argument('--confusion-bias', type=float, default=1.0, help='Multiplier for Confusion class probability')
+parser.add_argument('--drop_path_rate', default=0.0, type=float, help='Drop path rate for ViT')
 
 def main():
     args = parser.parse_args()

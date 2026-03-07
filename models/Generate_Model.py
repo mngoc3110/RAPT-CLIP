@@ -53,7 +53,7 @@ class GenerateModel(nn.Module):
             
         self.tokenized_hand_crafted_prompts = torch.cat([clip.tokenize(p) for p in hand_crafted_prompts])
         with torch.no_grad():
-            embedding = clip_model.token_embedding(self.tokenized_hand_crafted_prompts).type(self.dtype)
+            embedding = clip_model.token_embedding(self.tokenized_hand_crafted_prompts.to(clip_model.token_embedding.weight.device)).type(self.dtype)
         self.register_buffer("hand_crafted_prompt_embeddings", embedding)
 
 

@@ -1,186 +1,334 @@
-# RAPT-CLIP-RAER: Robust Academic Performance Tracking with CLIP for Real-world Academic Emotion Recognition
+# RAPT-CLIP-RAER
 
-This repository contains the official implementation of **RAPT-CLIP-RAER**, a state-of-the-art framework for Video Facial Expression Recognition (VFER) and Context-Aware Academic Emotion Recognition. 
+> **Nhận diện mức độ tham gia học tập bằng biểu diễn đa phương thức từ ảnh và mô tả ngữ nghĩa**
 
-Building upon the foundations of CLIP-CAER, this project introduces advanced techniques including **Expression-Aware Adapters (EAA)**, **Temporal Attention Pooling**, **Prompt Learning with Ensembles**, and **Semantic Label Distribution Learning (LDL)** to achieve robust performance in challenging, real-world academic environments.
-
-## 🌟 Key Features
-
-*   **Dual-Stream Architecture:** Simultaneously processes **Face** (fine-grained expression) and **Context/Body** (posture and behavior) streams using a shared CLIP backbone.
-*   **Temporal Attention Pooling:** A Transformer-based temporal model that dynamically weights frames to focus on "peak" emotional moments, effectively handling neutral-dominant video sequences.
-*   **Expression-Aware Adapter (EAA):** A lightweight, trainable module inserted into the CLIP visual encoder to adapt it for subtle facial expression recognition without destroying pre-trained knowledge.
-*   **Robust Prompt Learning:** Utilizes **Prompt Ensembling** and **Learnable Contexts** to generate powerful text classifiers.
-*   **Advanced Loss Functions:**
-    *   **Mutual Information (MI) Loss:** Aligns learnable prompts with hand-crafted semantic descriptors to prevent overfitting.
-    *   **Decorrelation (DC) Loss:** Reduces redundancy in feature dimensions.
-    *   **Semantic LDL:** Handles class ambiguity (e.g., "Confusion" vs. "Neutral") by using soft labels based on semantic similarity.
-    *   **MoCo (Momentum Contrast):** Optional self-supervised contrastive learning for better feature representation.
+Framework nhận diện cảm xúc học tập (Academic Emotion Recognition) dựa trên kiến trúc **Dual-Stream CLIP** kết hợp **Prompt Learning**, **Temporal Modeling** và **Expression-Aware Adapter**.
 
 ---
 
-## 📊 Supported Datasets
+## 🌟 Tổng Quan Kiến Trúc
 
-The framework is designed to work with multiple datasets, with specific optimizations for academic emotion recognition.
+```
+Input Video
+    ├── Face Stream ──→ CLIP ViT-B/16 + Face Adapter ──→ Temporal Transformer ──→ Face Features
+    │                                                                               │
+    └── Body Stream ──→ CLIP ViT-B/16 ─────────────────→ Temporal Transformer ──→ Body Features
+                                                                                    │
+                                                                          Feature Fusion (Concat)
+                                                                                    │
+                                                                            Projection FC ──→ Logits
+                                                                                    │
+                                                            Cosine Similarity with Text Features (Prompt Learner)
+```
 
-### 1. RAER (Real-world Academic Emotion Recognition)
-*   **Focus:** Students in real classroom environments.
-*   **Classes (5):** 
-    1.  **Neutral** (Calm, attentive)
-    2.  **Enjoyment** (Happy, engaged)
-    3.  **Confusion** (Puzzled, trying to understand)
-    4.  **Fatigue** (Tired, yawning)
-    5.  **Distraction** (Looking away, unfocused)
-*   **Characteristics:** Highly imbalanced, subtle expressions, significant pose variations.
+### Thành phần chính
 
-### 2. DAiSEE (Dataset for Affective States in E-Environments)
-*   **Focus:** Engagement levels in e-learning settings.
-*   **Classes (4):** Very Low, Low, High, Very High (Engagement).
-*   **Characteristics:** Long videos, subtle changes in engagement.
-
-### 3. CK+ (Extended Cohn-Kanade)
-*   **Focus:** Lab-controlled posed facial expressions.
-*   **Classes (7):** Anger, Contempt, Disgust, Fear, Happy, Sadness, Surprise.
-
-### 4. SFER & CAER
-*   **Focus:** Student Facial Expression / Context-Aware Emotion Recognition.
-*   **Classes (7):** Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise.
-
----
-
-## 🏗️ Model Architecture
-
-The `GenerateModel` class (in `models/Generate_Model.py`) orchestrates the following components:
-
-1.  **Visual Encoder (CLIP ViT-B/32):** Extracts spatial features from every frame. The weights are largely frozen to preserve generalization.
-2.  **Expression-Aware Adapter (EAA):** A bottleneck module (Linear -> ReLU -> Linear) added to the visual encoder. It learns to extract emotion-specific features (e.g., eyebrow movement, mouth shape).
-3.  **Temporal Transformer:** Takes the sequence of frame features (T x D) and applies Self-Attention.
-4.  **Attention Pooling:** Instead of a simple average or `[CLS]` token, an attention mechanism calculates a score for each frame. The final video representation is a weighted sum of frame features, prioritizing frames with strong emotional content.
-5.  **Text Encoder (Prompt Learner):** Generates class embeddings using learnable context vectors (e.g., `X X X X [CLASS]`) mixed with fixed templates.
+| Module | Mô tả |
+|--------|-------|
+| **CLIP ViT-B/16** | Pretrained vision-language backbone, fine-tune image encoder |
+| **Face Adapter (EAA)** | Lightweight adapter cho face stream, giữ pretrained knowledge |
+| **Temporal Transformer** | Attention pooling qua thời gian, focus vào "peak" emotion frames |
+| **Prompt Learner** | Learnable context vectors + Prompt Ensembling (3 prompts/class) |
+| **Hand-crafted Prompts** | Mô tả ngữ nghĩa chi tiết cho từng class cảm xúc |
+| **LDAM Loss** | Label-Distribution-Aware Margin Loss cho class imbalance |
+| **MI Loss** | Mutual Information — align learnable ↔ hand-crafted prompts |
+| **DC Loss** | Decorrelation — giảm redundancy trong feature dimensions |
 
 ---
 
-## 🛠️ Installation
+## 📁 Cấu Trúc Thư Mục
 
-### Prerequisites
-*   Python 3.8+
-*   PyTorch 1.12+ (Tested with 2.2.2)
-*   CUDA 11.x/12.x
+```
+RAPT-CLIP-RAER/
+├── main.py                        # Entry point: train & eval
+├── trainer.py                     # Training/validation logic
+├── models/
+│   ├── Generate_Model.py          # Full RAER model architecture
+│   ├── Prompt_Learner.py          # Learnable prompt module
+│   ├── Text.py                    # Text prompts & descriptors cho RAER, CAER, CK+, DAiSEE
+│   └── clip/                      # CLIP backbone (ViT-B/16)
+├── dataloader/
+│   ├── video_dataloader.py        # Video dataset & transforms
+│   └── video_transform.py         # Custom augmentations
+├── utils/
+│   ├── builders.py                # Model, dataloader, class info builders
+│   ├── loss.py                    # LDAM, MI, DC, LDL losses
+│   └── utils.py                   # Metrics, checkpointing, plotting
+├── train_sh/                      # Training shell scripts
+│   └── ablation/                  # Ablation study scripts
+├── RAER/                          # Dataset
+│   ├── annotation/                # Train/val/test splits
+│   └── bounding_box/              # Face & body bounding boxes (JSON)
+├── realtime_gradcam.py            # Real-time webcam emotion recognition
+├── run_thesis_gradcam_v2.py       # GradCAM/Attention visualization (best version)
+├── run_tsne_pretrained.py         # t-SNE trước fine-tune
+├── run_tsne_finetuned.py          # t-SNE sau fine-tune
+├── eval_tta.py                    # Test-Time Augmentation evaluation
+└── outputs/                       # Checkpoints, logs, visualizations
+    ├── RAER-ramp-down/            # Best RAER model (UAR 73.81%)
+    ├── RAER-ramp-up/              # RAER model (UAR 73.76%) + TTA
+    ├── CAER-S/                    # CAER-S benchmark (UAR 91.48%)
+    ├── EMOTIC/                    # EMOTIC benchmark (mAP 31.20%)
+    ├── tsne_pretrained/           # t-SNE pretrained features
+    ├── tsne_finetuned/            # t-SNE fine-tuned features
+    └── thesis_assets_v2/          # GradCAM attention heatmaps
+```
 
-### Setup
+---
+
+## 🚀 Cài Đặt
+
 ```bash
-# Create environment
-conda create -n raer_clip python=3.8
-conda activate raer_clip
+git clone https://github.com/your-username/RAPT-CLIP-RAER.git
+cd RAPT-CLIP-RAER
 
-# Install PyTorch (adjust for your CUDA version)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Install dependencies
-pip install ftfy regex tqdm opencv-python pillow
+pip install torch torchvision
+pip install ftfy regex tqdm scikit-learn matplotlib opencv-python
 ```
 
 ---
 
-## 📂 Data Preparation
+## 🏋️ Training
 
-The project expects datasets to be organized with an annotation file (txt) and a directory of videos/images.
-
-### Annotation Format
-A text file where each line contains:
-`path/to/video_or_folder num_frames label_index`
-
-Example (`train.txt`):
-```text
-RAER/train/Neutral/student01_clip01 45 0
-RAER/train/Confusion/student02_clip05 32 2
-...
-```
-
-### Bounding Boxes
-For the Dual-Stream model, you need JSON files containing face and body bounding boxes for every frame (or at least one per clip).
-*   `face_bbox.json`: `{"video_name": {"frame_idx.jpg": [x1, y1, x2, y2], ...}}`
-*   `body_bbox.json`: Similar structure for body crops.
-
----
-
-## 🚀 Usage
-
-### Training
-The project uses a highly optimized configuration for the RAER dataset, as defined in `train_sh/ablation/raer_full.sh`.
+### RAER Dataset
 
 ```bash
 bash train_sh/ablation/raer_full.sh
 ```
 
-**Key Training Parameters:**
-*   **Backbone:** CLIP ViT-B/16
-*   **Batch Size:** 4
-*   **Optimizer:** AdamW (LR: 2e-5, Prompt Learner LR: 3e-4)
-*   **Loss:** LDAM Loss with Class-Weighted Sampling.
-*   **Regularization:** Mutual Information (MI) and Decorrelation (DC) losses enabled after a 5-epoch warmup.
-*   **Data:** 16 segments per video, 224x224 image size, including both face and body crops.
+**Cấu hình chính:**
 
-### Ablation Studies
-We have conducted extensive ablation studies to verify the effectiveness of each component. These scripts are available in `train_sh/ablation/`:
-*   `raer_full.sh`: The complete pipeline (EAA + Prompt Tuning + LDAM + MI/DC Loss).
-*   `raer_no_adapter.sh`: Removes the Expression-Aware Adapter.
-*   `raer_no_prompt_tuning.sh`: Uses fixed hand-crafted prompts instead of learnable contexts.
-*   `raer_no_ldam.sh`: Replaces LDAM loss with standard Cross-Entropy.
-*   `raer_no_attn-pooling.sh`: Tests alternative temporal aggregation methods.
-*   `raer_no_sampler.sh`: Disables the weighted random sampler for handling imbalance.
-
-All ablation experiments have been executed to establish the final "Full" configuration as the best-performing model.
-
-### Evaluation & TTA (Test-Time Augmentation)
-To evaluate the best model using Test-Time Augmentation (FiveCrop + Horizontal Flip):
-
-```bash
-bash run_tta.sh
-```
-This script runs `eval_tta.py` which loads the best checkpoint (`model_best.pth`) and performs robust evaluation.
-
-### Ablation Studies
-The `train_sh/ablation/` folder contains scripts to test different configurations:
-*   `raer_no_adapter.sh`: Train without EAA.
-*   `raer_no_prompt_tuning.sh`: Train with fixed prompts.
-*   `raer_no_mixup.sh`: Train without Mixup augmentation.
+| Thông số | Giá trị |
+|----------|---------|
+| Backbone | CLIP ViT-B/16 |
+| Optimizer | AdamW |
+| Learning Rate | main: 2e-5, image_encoder: 1e-6, prompt_learner: 3e-4, adapter: 1e-4 |
+| Loss | LDAM + MI (λ=0.1) + DC (λ=0.1) |
+| Epochs | 20 |
+| Batch size | 4 |
+| Temporal | 16 segments × 1 frame, 1-layer Transformer |
+| Augmentation | ColorJitter, RandomGrayscale (p=0.2), RandomRotation (4°), HorizontalFlip |
+| Techniques | AMP, Gradient Clipping (1.0), WeightedRandomSampler |
+| MI/DC Warmup | 5 epochs |
 
 ---
 
-## 🌲 Project Structure
+## 📊 Kết Quả
 
+### Ablation Study trên RAER Dataset
+
+| Experiment | Mô tả | UAR (%) |
+|------------|--------|---------|
+| **RAER-ramp-down** | **Full model + MI/DC ramp-down** | **73.81** |
+| RAER-ramp-up | Full model + MI/DC ramp-up | 73.76 |
+| RAER-Freeze-image-encoder | Freeze CLIP image encoder | 71.56 |
+| RAER-no-weighted-sampler | Bỏ WeightedRandomSampler | 71.20 |
+| RAER-drop-path | Thêm DropPath 0.1 | 70.11 |
+| RAER-cross-entrophy | Dùng CrossEntropy thay LDAM | 69.97 |
+| RAER-no-mi-dc | Bỏ MI + DC losses | 69.30 |
+| RAER-prompt-details | Chỉ dùng prompt descriptors | 68.62 |
+| RAER-CLS-TOKEN | Dùng CLS token thay attention pooling | 67.45 |
+
+#### Training Curves & Confusion Matrix
+
+Sau khi train xong, các file đánh giá được lưu trong mỗi folder output:
+
+| File | Mô tả |
+|------|-------|
+| `log.png` | Biểu đồ loss, WAR, UAR qua các epoch |
+| `confusion_matrix.png` | Ma trận nhầm lẫn trên test set |
+| `log.txt` | Log chi tiết từng epoch |
+| `model_best.pth` | Checkpoint model tốt nhất (theo UAR) |
+
+Ví dụ kết quả best model (`outputs/RAER-ramp-down/`):
+
+<p align="center">
+  <img src="outputs/RAER-ramp-down/log.png" width="48%" />
+  <img src="outputs/RAER-ramp-down/confusion_matrix.png" width="48%" />
+</p>
+
+### Benchmark trên Dataset Khác
+
+| Dataset | Classes | Metric | Score |
+|---------|---------|--------|-------|
+| **CAER-S** | 7 (Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise) | UAR | **91.48%** |
+| **EMOTIC** | 26 continuous emotion categories | mAP | **31.20%** |
+
+#### CAER-S Results
+
+<p align="center">
+  <img src="outputs/CAER-S/log.png" width="48%" />
+  <img src="outputs/CAER-S/confusion_matrix.png" width="48%" />
+</p>
+
+#### EMOTIC Results
+
+<p align="center">
+  <img src="outputs/EMOTIC/log.png" width="60%" />
+</p>
+
+---
+
+## 📊 Evaluation
+
+### Đánh giá trên Test Set
+
+```bash
+python main.py \
+  --mode eval \
+  --dataset RAER \
+  --eval-checkpoint outputs/RAER-ramp-down/model_best.pth \
+  --test-annotation ./RAER/annotation/test.txt \
+  --bounding-box-face ./RAER/bounding_box/face.json \
+  --bounding-box-body ./RAER/bounding_box/body.json \
+  --text-type prompt_ensemble \
+  --crop-body
 ```
-RAPT-CLIP-RAER/
-├── dataloader/          # Custom dataloaders for Video/Image folders
-│   ├── video_dataloader.py
-│   └── video_transform.py
-├── models/              # Model definitions
-│   ├── Generate_Model.py      # Main architecture
-│   ├── Adapter.py             # EAA module
-│   ├── Temporal_Model.py      # Transformer + Attn Pooling
-│   ├── Prompt_Learner.py      # Learnable prompts
-│   └── Text.py                # Class descriptions
-├── train_sh/            # Training shell scripts
-│   └── ablation/        # Ablation study configurations
-├── utils/               # Helper functions (Loss, Logging)
-├── main.py              # Main training loop
-├── trainer.py           # Training/Validation engine
-├── eval_tta.py          # TTA Evaluation script
-└── README.md            # This file
+
+**Output:** Confusion matrix (`confusion_matrix.png`) + UAR/WAR metrics trong `log.txt`.
+
+### Test-Time Augmentation (TTA)
+
+TTA sử dụng nhiều augmented versions của mỗi test sample để cải thiện prediction:
+
+```bash
+python eval_tta.py \
+  --checkpoint outputs/RAER-ramp-up/model_best.pth \
+  --dataset RAER \
+  --test-annotation ./RAER/annotation/test.txt
 ```
 
-## 📜 Citation
+Kết quả TTA:
 
-If you use this code or dataset, please cite the following paper:
+<p align="center">
+  <img src="TTA-testing.png" width="70%" />
+</p>
 
-```bibtex
-@InProceedings{Zhao_2025_ICCV,
-    author    = {Zhao, Luming and Xuan, Jingwen and Lou, Jiamin and Yu, Yonghui and Yang, Wenwu},
-    title     = {Context-Aware Academic Emotion Dataset and Benchmark},
-    booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
-    year      = {2025}
+---
+
+## 🔬 Visualization
+
+### t-SNE — Phân tích Không Gian Đặc Trưng
+
+So sánh feature space **trước** và **sau** fine-tune trên 528 test samples:
+
+```bash
+# Pretrained CLIP features (trước fine-tune)
+python run_tsne_pretrained.py
+
+# RAER model features (sau fine-tune)
+python run_tsne_finetuned.py
+```
+
+#### Pretrained (trước fine-tune) → Các class trộn lẫn hoàn toàn
+
+<p align="center">
+  <img src="outputs/tsne_pretrained/tsne_pretrained_face.png" width="32%" />
+  <img src="outputs/tsne_pretrained/tsne_pretrained_body.png" width="32%" />
+  <img src="outputs/tsne_pretrained/tsne_pretrained_concat.png" width="32%" />
+</p>
+
+#### Fine-tuned (sau fine-tune) → Các class bắt đầu tách biệt rõ
+
+<p align="center">
+  <img src="outputs/tsne_finetuned/tsne_finetuned_face.png" width="32%" />
+  <img src="outputs/tsne_finetuned/tsne_finetuned_body.png" width="32%" />
+  <img src="outputs/tsne_finetuned/tsne_finetuned_fused.png" width="32%" />
+</p>
+
+### GradCAM / Attention Heatmap
+
+Sinh attention heatmap cho Face, Body, Context streams sử dụng **Token-level CLIP Similarity**:
+
+```bash
+python run_thesis_gradcam_v2.py
+```
+
+**Kỹ thuật:**
+- Token-level cosine similarity giữa patch tokens (14×14) và text embedding
+- Class-discriminative: trừ mean similarity → highlight vùng đặc trưng
+- Face masking cho Body stream: chỉ focus torso/tay/vai
+
+**Output:** `outputs/thesis_assets_v2/` — mỗi sample có GRID gồm: Original + Face Heatmap + Body Heatmap + Context Heatmap.
+
+<p align="center">
+  <img src="outputs/thesis_assets_v2/sample_0_true_Fatigue_pred_Fatigue_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_60_true_Enjoyment_pred_Enjoyment_GRID.jpg" width="48%" />
+</p>
+<p align="center">
+  <img src="outputs/thesis_assets_v2/sample_100_true_Distraction_pred_Distraction_GRID.jpg" width="48%" />
+  <img src="outputs/thesis_assets_v2/sample_7_true_Enjoyment_pred_Enjoyment_GRID.jpg" width="48%" />
+</p>
+
+---
+
+## 🎥 Real-time Emotion Recognition
+
+Nhận diện cảm xúc qua webcam real-time, hỗ trợ nhiều người cùng lúc:
+
+```bash
+python realtime_gradcam.py --checkpoint outputs/RAER-ramp-down/model_best.pth
+```
+
+**Tính năng:**
+- Haar Cascade face detection
+- Batch inference cho nhiều người
+- Multi-threaded (capture + inference song song)
+- FPS counter + face persistence
+- Nhấn `q` để thoát
+
+> **Lưu ý (macOS):** Cần cấp quyền camera cho Terminal trong **System Settings → Privacy & Security → Camera**
+
+---
+
+## 🗂️ RAER Dataset
+
+### Classes (5 loại cảm xúc học tập)
+
+| ID | Class | Mô tả |
+|----|-------|-------|
+| 1 | **Neutrality** | Trung tính, bình tĩnh |
+| 2 | **Enjoyment** | Thích thú, hào hứng |
+| 3 | **Confusion** | Bối rối, khó hiểu |
+| 4 | **Fatigue** | Mệt mỏi, buồn ngủ |
+| 5 | **Distraction** | Mất tập trung, nhìn đi chỗ khác |
+
+### Annotation Format
+
+Mỗi dòng trong file annotation:
+```
+video_path num_frames label
+```
+
+Ví dụ:
+```
+RAER/videos/student01/clip_001 150 1
+RAER/videos/student02/clip_003 120 4
+```
+
+### Bounding Box Format
+
+File JSON chứa face/body bounding box cho từng frame:
+```json
+{
+  "video_path/frame_001.jpg": [x1, y1, x2, y2],
+  ...
 }
 ```
 
-## 🙏 Acknowledgments
-This codebase is built upon [DFER-CLIP](https://github.com/zengqunzhao/DFER-CLIP). We thank the authors for their open-source contribution.
+---
+
+## 📝 Citation
+
+```bibtex
+@misc{rapt-clip-raer-2026,
+  title={Multimodal Academic Emotion Recognition with Vision-Language Pre-training},
+  year={2026}
+}
+```
+
+---
+
+## 📄 License
+
+This project is for academic research purposes.

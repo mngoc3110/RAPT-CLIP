@@ -2,7 +2,7 @@ set -e
 export OMP_NUM_THREADS=4
 
 # Checkpoint path
-checkpoint="outputs/Ablation-RAER-FULL_fix_parameter_fullface_train_test-[02-15]-[07:38]/model_best.pth"
+checkpoint="outputs/RAER-ramp-down/model_best.pth"
 
 echo "Running TTA with Confusion Bias on checkpoint: ${checkpoint}"
 
@@ -15,6 +15,7 @@ python eval_tta.py \
     --clip-path "ViT-B/16" \
     --confusion-bias 1.5 \
     --root-dir ./ \
+    --drop_path_rate 0.0 \
     --train-annotation RAER/annotation/train.txt \
     --val-annotation RAER/annotation/test.txt \
     --test-annotation RAER/annotation/test.txt \

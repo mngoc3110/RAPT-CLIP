@@ -58,7 +58,7 @@ class PromptLearner(nn.Module):
 
         tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts])
         with torch.no_grad():
-            embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
+            embedding = clip_model.token_embedding(tokenized_prompts.to(clip_model.token_embedding.weight.device)).type(dtype)
         # These token vectors will be saved when in save_model(),
         # but they should be ignored in load_model() as we want to use
         # those computed using the current class names

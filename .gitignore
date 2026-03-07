@@ -1,10 +1,10 @@
-# Ignore dataset
-raer/
-CAER/
-CAER-S/
-CKPlus_Dataset/
-DAiSEE/
-Student_FER_Dataset/
+# Ignore dataset (root-level only)
+/raer/
+/CAER/
+/CAER-S/
+/CKPlus_Dataset/
+/DAiSEE/
+/Student_FER_Dataset/
 
 # Annotations (generated)
 daisee_annotations/
@@ -25,4 +25,10 @@ update_log.md
 # Temporary Scripts
 run_daisee.sh
 debug_dataloader_*.py
-train_daisee_local.sh.DS_Store
+train_daisee_local.sh
+Context_Aware_Multimodal_Emotion_Recognition/
+
+# Cached features & large data
+*.pt
+RAER/cached_features/
+RAER/images/
