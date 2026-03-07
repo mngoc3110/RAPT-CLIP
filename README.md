@@ -166,7 +166,8 @@ Ví dụ kết quả best model (`outputs/RAER-ramp-down/`):
 #### EMOTIC Results
 
 <p align="center">
-  <img src="outputs/EMOTIC/log.png" width="60%" />
+  <img src="outputs/EMOTIC/log.png" width="48%" />
+  <img src="outputs/EMOTIC/phanphoi.png" width="48%" />
 </p>
 
 ---
