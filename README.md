@@ -203,6 +203,7 @@ python eval_tta.py \
 | **RAER** | 5 (Neutrality, Enjoyment, Confusion, Fatigue, Distraction) | UAR | **73.81%** |
 | **CAER-S** | 7 (Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise) | UAR | **91.48%** |
 | **EMOTIC** | 26 continuous emotion categories | mAP | **31.20%** |
+| **DAiSEE** | 3 (Disengaged, Engaged, Highly Engaged) | WAR | **57.94%** |
 
 ### Training Curves & Confusion Matrix
 
@@ -219,6 +220,21 @@ python eval_tta.py \
 </p>
 </details>
 
+<details>
+<summary><b>EMOTIC Results</b></summary>
+<p align="center">
+  <img src="outputs/EMOTIC/log.png" width="48%" />
+  <img src="outputs/EMOTIC/emotic_ap_bar.png" width="48%" />
+</p>
+</details>
+
+<details>
+<summary><b>DAiSEE Results</b></summary>
+<p align="center">
+  <img src="outputs/DAiSEE/confusion_matrix.png" width="60%" />
+</p>
+</details>
+
 ---
 
 ## Visualization
@@ -232,16 +248,12 @@ python run_tsne_rampdown.py --checkpoint outputs/RAER-ramp-down/model_best.pth
 ```
 
 <p align="center">
-  <img src="outputs/tsne_pretrained/tsne_pretrained_face.png" width="32%" />
-  <img src="outputs/tsne_pretrained/tsne_pretrained_body.png" width="32%" />
-  <img src="outputs/tsne_pretrained/tsne_pretrained_concat.png" width="32%" />
+  <img src="outputs/tsne_rampdown/tsne_pretrained.png" width="48%" />
 </p>
 <p align="center"><em>Pretrained CLIP features — classes are completely mixed</em></p>
 
 <p align="center">
-  <img src="outputs/tsne_finetuned/tsne_finetuned_face.png" width="32%" />
-  <img src="outputs/tsne_finetuned/tsne_finetuned_body.png" width="32%" />
-  <img src="outputs/tsne_finetuned/tsne_finetuned_fused.png" width="32%" />
+  <img src="outputs/tsne_rampdown/tsne_finetuned_fused.png" width="48%" />
 </p>
 <p align="center"><em>Fine-tuned features — clear class separation emerges</em></p>
 
