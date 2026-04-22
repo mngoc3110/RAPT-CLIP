@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import random
+from sklearn.metrics import recall_score
 
 from models.Generate_Model import GenerateModel
 from models.clip import clip
@@ -116,18 +117,73 @@ def shuffle_temporal_frames(tensor):
     return shuffled
 
 
+def forward_drop_stream(model, img_f, img_b, drop='face'):
+    """
+    Custom forward that zeros out face or body features
+    at the concat point (before project_fc), not at image input.
+    This properly ablates one stream at the architecture level.
+    """
+    dtype = model.dtype
+    
+    # --- Face stream ---
+    n, t, c, h, w = img_f.shape
+    image_face_reshaped = img_f.contiguous().view(-1, c, h, w)
+    image_face_features = model.image_encoder(image_face_reshaped.type(dtype))
+    image_face_features = model.face_adapter(image_face_features)
+    image_face_features = image_face_features.contiguous().view(n, t, -1)
+    video_face_features = model.temporal_net(image_face_features)
+    
+    # --- Body stream ---
+    n, t, c, h, w = img_b.shape
+    image_body_reshaped = img_b.contiguous().view(-1, c, h, w)
+    image_body_features = model.image_encoder(image_body_reshaped.type(dtype))
+    image_body_features = image_body_features.contiguous().view(n, t, -1)
+    video_body_features = model.temporal_net_body(image_body_features)
+    
+    # --- Zero out one stream at concat point ---
+    if drop == 'face':
+        video_face_features = torch.zeros_like(video_face_features)
+    elif drop == 'body':
+        video_body_features = torch.zeros_like(video_body_features)
+    
+    # --- Continue normal forward from concat ---
+    video_features = torch.cat((video_face_features, video_body_features), dim=-1)
+    video_features = model.project_fc(video_features)
+    video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)
+    
+    # Text
+    prompts = model.prompt_learner()
+    with torch.cuda.amp.autocast(enabled=False):
+        text_features = model.text_encoder(prompts, model.tokenized_prompts).float()
+        text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
+    
+    # Classification
+    if model.is_ensemble:
+        text_features_view = text_features.view(model.num_classes, model.num_prompts_per_class, -1)
+        text_features_view = text_features_view / (text_features_view.norm(dim=-1, keepdim=True) + 1e-6)
+        logits = torch.einsum('bd,cpd->bcp', video_features, text_features_view)
+        output = torch.mean(logits, dim=2) / model.args.temperature
+    else:
+        output = video_features @ text_features.t() / model.args.temperature
+    
+    return output
+
+
 def run_robustness_tests(model, dataloader, args, out_dir):
     print("--- Starting Advanced Robustness Testing ---")
     
     # 1. Noise Levels
     noise_levels = [0.0, 0.1, 0.3, 0.5]
-    noise_results = {std: {"correct": 0, "total": 0} for std in noise_levels}
+    noise_results = {std: {"preds": [], "labels": []} for std in noise_levels}
     
     # 2. Temporal & Spatial
     scenarios = {
-        "Normal": {"correct": 0, "total": 0},
-        "Temporal Shuffling": {"correct": 0, "total": 0},
-        "Random Erasing (Body)": {"correct": 0, "total": 0}
+        "Normal": {"preds": [], "labels": []},
+        "Temporal Shuffling": {"preds": [], "labels": []},
+        "Random Erasing (Face)": {"preds": [], "labels": []},
+        "Random Erasing (Body)": {"preds": [], "labels": []},
+        "Drop Face Stream": {"preds": [], "labels": []},
+        "Drop Body Stream": {"preds": [], "labels": []}
     }
     
     with torch.no_grad():
@@ -146,53 +202,76 @@ def run_robustness_tests(model, dataloader, args, out_dir):
                      noisy_b = add_gaussian_noise(img_b, std)
                      out, _, _, _ = model(img_f, noisy_b)
                 pred = torch.argmax(out, dim=-1)
-                noise_results[std]["correct"] += (pred == labels).sum().item()
-                noise_results[std]["total"] += bs
+                noise_results[std]["preds"].extend(pred.cpu().tolist())
+                noise_results[std]["labels"].extend(labels.cpu().tolist())
                 
             # Use normal prediction for scenarios base
-            scenarios["Normal"]["correct"] = noise_results[0.0]["correct"]
-            scenarios["Normal"]["total"] = noise_results[0.0]["total"]
+            scenarios["Normal"]["preds"].extend(noise_results[0.0]["preds"][-bs:])
+            scenarios["Normal"]["labels"].extend(noise_results[0.0]["labels"][-bs:])
             
             # --- 2. Temporal Shuffling ---
             shuffled_f = shuffle_temporal_frames(img_f)
             shuffled_b = shuffle_temporal_frames(img_b)
             out_shuffled, _, _, _ = model(shuffled_f, shuffled_b)
             pred_shuffled = torch.argmax(out_shuffled, dim=-1)
-            scenarios["Temporal Shuffling"]["correct"] += (pred_shuffled == labels).sum().item()
-            scenarios["Temporal Shuffling"]["total"] += bs
+            scenarios["Temporal Shuffling"]["preds"].extend(pred_shuffled.cpu().tolist())
+            scenarios["Temporal Shuffling"]["labels"].extend(labels.cpu().tolist())
             
-            # --- 3. Random Erasing on Body/Context ---
-            # Simulating occlusions in the classroom
+            # --- 3. Random Erasing on Face ---
+            # Simulating face occlusion (hand covering, mask, turned away)
+            erased_f = apply_random_erasing(img_f, p=1.0)
+            out_erased_f, _, _, _ = model(erased_f, img_b)
+            pred_erased_f = torch.argmax(out_erased_f, dim=-1)
+            scenarios["Random Erasing (Face)"]["preds"].extend(pred_erased_f.cpu().tolist())
+            scenarios["Random Erasing (Face)"]["labels"].extend(labels.cpu().tolist())
+            
+            # --- 4. Random Erasing on Body/Context ---
+            # Simulating body/context occlusions in the classroom
             erased_b = apply_random_erasing(img_b, p=1.0)
-            out_erased, _, _, _ = model(img_f, erased_b)
-            pred_erased = torch.argmax(out_erased, dim=-1)
-            scenarios["Random Erasing (Body)"]["correct"] += (pred_erased == labels).sum().item()
-            scenarios["Random Erasing (Body)"]["total"] += bs
+            out_erased_b, _, _, _ = model(img_f, erased_b)
+            pred_erased_b = torch.argmax(out_erased_b, dim=-1)
+            scenarios["Random Erasing (Body)"]["preds"].extend(pred_erased_b.cpu().tolist())
+            scenarios["Random Erasing (Body)"]["labels"].extend(labels.cpu().tolist())
+            
+            # --- 5. Drop Face Stream (zero face features at concat) ---
+            out_no_face = forward_drop_stream(model, img_f, img_b, drop='face')
+            pred_no_face = torch.argmax(out_no_face, dim=-1)
+            scenarios["Drop Face Stream"]["preds"].extend(pred_no_face.cpu().tolist())
+            scenarios["Drop Face Stream"]["labels"].extend(labels.cpu().tolist())
+            
+            # --- 6. Drop Body Stream (zero body features at concat) ---
+            out_no_body = forward_drop_stream(model, img_f, img_b, drop='body')
+            pred_no_body = torch.argmax(out_no_body, dim=-1)
+            scenarios["Drop Body Stream"]["preds"].extend(pred_no_body.cpu().tolist())
+            scenarios["Drop Body Stream"]["labels"].extend(labels.cpu().tolist())
 
     # --- Process and Save Results ---
+    def calc_uar(preds, labels):
+        return recall_score(labels, preds, average='macro', zero_division=0) * 100.0
+
     print("\n[RESULTS] Gaussian Noise Robustness (Context):")
     noise_accs = []
     for std in noise_levels:
-        acc = noise_results[std]["correct"] / max(noise_results[std]["total"], 1) * 100
+        acc = calc_uar(noise_results[std]["preds"], noise_results[std]["labels"])
         noise_accs.append(acc)
-        print(f"  Std {std:.1f}: {acc:.2f}%")
+        print(f"  Std {std:.1f}: {acc:.2f}% (UAR)")
         
     print("\n[RESULTS] Structural Robustness:")
     bar_names = []
     bar_accs = []
     for name, res in scenarios.items():
-        acc = res["correct"] / max(res["total"], 1) * 100
+        acc = calc_uar(res["preds"], res["labels"])
         bar_names.append(name)
         bar_accs.append(acc)
-        print(f"  {name:25s}: {acc:.2f}%")
+        print(f"  {name:25s}: {acc:.2f}% (UAR)")
         
     # --- Plotting ---
     # 1. Noise Line Plot
     plt.figure(figsize=(8, 5))
     plt.plot(noise_levels, noise_accs, marker='o', linestyle='-', color='b', linewidth=2, markersize=8)
-    plt.title('Robustness to Context Camera Noise', fontsize=14)
+    plt.title('Robustness to Context Camera Noise (UAR)', fontsize=14)
     plt.xlabel('Gaussian Noise Standard Deviation', fontsize=12)
-    plt.ylabel('Accuracy (%)', fontsize=12)
+    plt.ylabel('UAR Accuracy (%)', fontsize=12)
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.xticks(noise_levels)
     plt.ylim(0, 100)
@@ -202,9 +281,10 @@ def run_robustness_tests(model, dataloader, args, out_dir):
     
     # 2. Structural Bar Chart
     plt.figure(figsize=(8, 6))
-    bars = plt.bar(bar_names, bar_accs, color=['#2ca02c', '#d62728', '#ff7f0e'])
-    plt.title('Impact of Temporal & Spatial Disturbances', fontsize=14)
-    plt.ylabel('Accuracy (%)', fontsize=12)
+    colors = ['#2ca02c', '#d62728', '#9467bd', '#ff7f0e'][:len(bar_names)]
+    bars = plt.bar(bar_names, bar_accs, color=colors)
+    plt.title('Impact of Temporal & Spatial Disturbances (UAR)', fontsize=14)
+    plt.ylabel('UAR Accuracy (%)', fontsize=12)
     plt.ylim(0, 100)
     
     # Add values on top of bars

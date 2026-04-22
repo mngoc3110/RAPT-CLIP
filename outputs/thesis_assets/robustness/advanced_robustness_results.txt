@@ -1,0 +1,13 @@
+Noise Injection Results:
+Std 0.0: 73.37%
+Std 0.1: 67.68%
+Std 0.3: 47.97%
+Std 0.5: 38.87%
+
+Structural Disturbances:
+Normal: 73.37%
+Temporal Shuffling: 72.60%
+Random Erasing (Face): 64.50%
+Random Erasing (Body): 54.23%
+Drop Face Stream: 54.15%
+Drop Body Stream: 62.29%

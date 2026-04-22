@@ -29,7 +29,11 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
 
 
     print("\nInstantiating GenerateModel...")
-    model = GenerateModel(input_text=input_text, clip_model=CLIP_model, args=args)
+    if hasattr(args, 'ablation_no_text') and args.ablation_no_text:
+        from models.Generate_Model_NoText import GenerateModel_NoText
+        model = GenerateModel_NoText(clip_model=CLIP_model, args=args)
+    else:
+        model = GenerateModel(input_text=input_text, clip_model=CLIP_model, args=args)
 
     for name, param in model.named_parameters():
         param.requires_grad = False
@@ -41,7 +45,7 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
             if "image_encoder" in name:
                 param.requires_grad = True
 
-    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter"]
+    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter", "classifier"]
     
     print('\nTrainable parameters:')
     for name, param in model.named_parameters():

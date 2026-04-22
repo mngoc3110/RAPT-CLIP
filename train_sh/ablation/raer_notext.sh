@@ -1,0 +1,41 @@
+#!/bin/bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+python main.py \
+  --mode train \
+  --exper-name Ablation-RAER-Visual-Only \
+  --ablation-no-text \
+  --dataset RAER \
+  --gpu 0 \
+  --epochs 25 \
+  --batch-size 16 \
+  --optimizer AdamW \
+  --lr 2e-5 \
+  --lr-image-encoder 1e-6 \
+  --lr-adapter 1e-4 \
+  --weight-decay 0.005 \
+  --milestones 10 15 20 \
+  --gamma 0.1 \
+  --temporal-layers 1 \
+  --num-segments 16 \
+  --duration 1 \
+  --image-size 224 \
+  --seed 42 \
+  --print-freq 50 \
+  --root-dir ./ \
+  --train-annotation ./RAER/annotation/train.txt \
+  --val-annotation ./RAER/annotation/test.txt \
+  --test-annotation ./RAER/annotation/test.txt \
+  --clip-path ViT-B/16 \
+  --bounding-box-face ./RAER/bounding_box/face.json \
+  --bounding-box-body ./RAER/bounding_box/body.json \
+  --loss-type ldam \
+  --lambda_dc 0.0 \
+  --mi-warmup 5 \
+  --dc-warmup 5 \
+  --lambda_mi 0.0 \
+  --use-amp \
+  --use-weighted-sampler \
+  --crop-body \
+  --grad-clip 1.0 \
+  --mixup-alpha 0.0
