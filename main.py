@@ -260,14 +260,29 @@ def run_training(args: argparse.Namespace) -> None:
             {"params": model.classifier.parameters(), "lr": args.lr}
         ]
     else:
-        optimizer_grouped_parameters = [
-            {"params": model.temporal_net.parameters(), "lr": args.lr},
-            {"params": model.temporal_net_body.parameters(), "lr": args.lr},
-            {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
-            {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
-            {"params": model.project_fc.parameters(), "lr": args.lr},
-            {"params": model.face_adapter.parameters(), "lr": args.lr_adapter}
-        ]
+        if hasattr(model, 'temporal_net_face'):
+            # V2 Architecture
+            optimizer_grouped_parameters = [
+                {"params": model.temporal_net_face.parameters(), "lr": args.lr},
+                {"params": model.temporal_net_body.parameters(), "lr": args.lr},
+                {"params": model.temporal_net_context.parameters(), "lr": args.lr},
+                {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
+                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
+                {"params": model.project_fc.parameters(), "lr": args.lr},
+                {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
+                {"params": model.cross_attn_fb.parameters(), "lr": args.lr},
+                {"params": model.cross_attn_fbc.parameters(), "lr": args.lr}
+            ]
+        else:
+            # V1 Architecture
+            optimizer_grouped_parameters = [
+                {"params": model.temporal_net.parameters(), "lr": args.lr},
+                {"params": model.temporal_net_body.parameters(), "lr": args.lr},
+                {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
+                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
+                {"params": model.project_fc.parameters(), "lr": args.lr},
+                {"params": model.face_adapter.parameters(), "lr": args.lr_adapter}
+            ]
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
