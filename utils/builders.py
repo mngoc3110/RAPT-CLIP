@@ -29,7 +29,10 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
 
 
     print("\nInstantiating GenerateModel...")
-    if hasattr(args, 'ablation_no_text') and args.ablation_no_text:
+    if hasattr(args, 'use_v2') and args.use_v2:
+        from models.Generate_Model_v2 import GenerateModel_v2
+        model = GenerateModel_v2(input_text=input_text, clip_model=CLIP_model, args=args)
+    elif hasattr(args, 'ablation_no_text') and args.ablation_no_text:
         from models.Generate_Model_NoText import GenerateModel_NoText
         model = GenerateModel_NoText(clip_model=CLIP_model, args=args)
     else:
@@ -104,6 +107,12 @@ def get_class_info(args: argparse.Namespace) -> Tuple[list, list]:
         input_text = class_descriptor
     elif args.text_type == "prompt_ensemble":
         input_text = ensemble_prompts
+    elif args.text_type == "au_guided_prompts":
+        if dataset_name == "RAER":
+            from models.Text import class_descriptor_5_au
+            input_text = class_descriptor_5_au
+        else:
+            raise ValueError("AU-guided prompts are only defined for RAER dataset currently.")
     else:
         raise ValueError(f"Unknown text_type: {args.text_type}")
 

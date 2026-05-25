@@ -68,6 +68,14 @@ prompt_ensemble_5 = [
     ]
 ]
 
+class_descriptor_5_au = [
+    "A student with AU0 neutral face and AU43 eyes normally open, showing neutrality.",
+    "A student with AU6 cheek raiser and AU12 lip corner puller, showing enjoyment.",
+    "A student with AU4 brow lowerer and AU7 lid tightener, showing confusion.",
+    "A student with AU43 eyes closed and AU46 drooping eyelids, showing fatigue.",
+    "A student with AU51 head turn left or AU52 head turn right, showing distraction."
+]
+
 class_descriptor_8 = [
     'A person who is feeling neutral.',
     'A person who is feeling happy.',

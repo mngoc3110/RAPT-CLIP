@@ -124,6 +124,8 @@ model_group.add_argument('--moco-t', type=float, default=0.07, help='Temperature
 model_group.add_argument('--drop-path-rate', type=float, default=0.0, help='Drop Path rate for Stochastic Depth.')
 model_group.add_argument('--freeze-image-encoder', action='store_true', help='Freeze the image encoder.')
 model_group.add_argument('--ablation-no-text', action='store_true', help='Use Visual-Only ablation architecture.')
+model_group.add_argument('--use-v2', action='store_true', help='Use V2 Triple-Stream Architecture.')
+model_group.add_argument('--modality-dropout', type=float, default=0.3, help='Modality Dropout probability.')
 
 # ==================== Helper Functions ====================
 def setup_environment(args: argparse.Namespace) -> argparse.Namespace:

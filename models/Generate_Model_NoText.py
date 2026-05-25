@@ -92,7 +92,7 @@ class GenerateModel_NoText(nn.Module):
         self.queue_ptr[0] = ptr
 
     @torch.no_grad()
-    def forward_momentum(self, image_face, image_body):
+    def forward_momentum(self, image_face, image_body, image_context=None):
         n, t, c, h, w = image_face.shape
         image_face = image_face.contiguous().view(-1, c, h, w)
         image_face_features = self.image_encoder_m(image_face.type(self.dtype))
@@ -111,7 +111,7 @@ class GenerateModel_NoText(nn.Module):
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
         
-    def forward(self, image_face, image_body):
+    def forward(self, image_face, image_body, image_context=None):
         ################# Visual Part #################
         n, t, c, h, w = image_face.shape
         image_face_reshaped = image_face.contiguous().view(-1, c, h, w)

@@ -135,7 +135,7 @@ class GenerateModel(nn.Module):
         self.queue_ptr[0] = ptr
 
     @torch.no_grad()
-    def forward_momentum(self, image_face, image_body):
+    def forward_momentum(self, image_face, image_body, image_context=None):
         # Face Part
         n, t, c, h, w = image_face.shape
         image_face = image_face.contiguous().view(-1, c, h, w)
@@ -157,7 +157,7 @@ class GenerateModel(nn.Module):
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
         
-    def forward(self, image_face,image_body):
+    def forward(self, image_face, image_body, image_context=None):
         ################# Visual Part #################
         # Face Part
         n, t, c, h, w = image_face.shape

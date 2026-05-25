@@ -204,13 +204,14 @@ class VideoDataset(data.Dataset):
             print(f"Warning: No frames found for video {record.path}, returning zeros.")
             dummy_shape = (self.num_segments * self.duration, 3, self.image_size, self.image_size)
             if is_video_file and 'cap' in locals(): cap.release()
-            return torch.zeros(dummy_shape), torch.zeros(dummy_shape), record.label - 1
+            return torch.zeros(dummy_shape), torch.zeros(dummy_shape), torch.zeros(dummy_shape), record.label - 1
 
         # Clamp indices to be valid
         indices = np.clip(indices, 0, num_real_frames - 1)
         
         images = list()
         images_face = list()
+        images_context = list()
         
         for seg_ind in indices:
             p = int(seg_ind)
@@ -309,6 +310,7 @@ class VideoDataset(data.Dataset):
                 
                 images.append(img_pil_body)
                 images_face.append(img_pil_face)
+                images_context.append(img_pil)
                 
                 if p < num_real_frames - 1:
                     p += 1
@@ -326,14 +328,16 @@ class VideoDataset(data.Dataset):
         
         process_data = self.transform(images) # (C*T, H, W)
         process_data_face = self.transform(images_face) # (C*T, H, W)
+        process_data_context = self.transform(images_context) # (C*T, H, W)
 
         # Reshape to (T, C, H, W)
         # Since Stack concatenated [img1, img2, ...] -> [R1,G1,B1, R2,G2,B2, ...]
         # Reshaping to (-1, 3, H, W) correctly separates frames.
         process_data = process_data.view(-1, 3, self.image_size, self.image_size)
         process_data_face = process_data_face.view(-1, 3, self.image_size, self.image_size)
+        process_data_context = process_data_context.view(-1, 3, self.image_size, self.image_size)
         
-        return process_data_face, process_data, record.label - 1
+        return process_data_face, process_data, process_data_context, record.label - 1
 
     def __len__(self):
         return len(self.video_list)

@@ -135,7 +135,15 @@ class Trainer:
         pbar = tqdm(loader, desc=f"{mode_str} Epoch {epoch_str}", file=sys.stdout)
         
         with context:
-            for i, (images_face, images_body, target) in enumerate(pbar):
+            for i, data in enumerate(pbar):
+                # Handle both 2-stream (Face, Body) and 3-stream (Face, Body, Context)
+                if len(data) == 4:
+                    images_face, images_body, images_context, target = data
+                    images_context = images_context.to(self.device)
+                else:
+                    images_face, images_body, target = data
+                    images_context = None
+
                 # DEBUG: Check for NaN in inputs
                 if torch.isnan(images_face).any() or torch.isinf(images_face).any():
                     print(f"\n[CRITICAL ERROR] NaN/Inf detected in images_face at batch {i}!")
@@ -151,7 +159,10 @@ class Trainer:
 
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     # Forward pass
-                    output, learnable_text_features, hand_crafted_text_features, moco_logits = self.model(images_face, images_body)
+                    if images_context is not None:
+                        output, learnable_text_features, hand_crafted_text_features, moco_logits = self.model(images_face, images_body, images_context)
+                    else:
+                        output, learnable_text_features, hand_crafted_text_features, moco_logits = self.model(images_face, images_body)
                     
                     # DEBUG: Check model output for NaN
                     if torch.isnan(output).any():
