@@ -3,6 +3,7 @@
 # RAPT-CLIP v2 (Đột Phá SOTA - Triple-Stream + AU Prompts + Modality Dropout)
 # ============================================================================
 
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export CUDA_VISIBLE_DEVICES=0
 
 # Thư mục gốc chứa dataset RAER
@@ -27,7 +28,7 @@ EXPER_NAME="RAPT-CLIP-RAER-V2"
 TEXT_TYPE="au_guided_prompts" # Sử dụng AU prompts
 
 EPOCHS=50
-BATCH_SIZE=4
+BATCH_SIZE=2
 WORKERS=4
 SEED=42
 
@@ -68,6 +69,7 @@ python main.py \
     --use-v2 \
     --text-type ${TEXT_TYPE} \
     --modality-dropout ${MODALITY_DROPOUT} \
+    --freeze-image-encoder \
     --crop-body \
     --epochs ${EPOCHS} \
     --batch-size ${BATCH_SIZE} \
