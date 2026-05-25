@@ -218,7 +218,7 @@ class Trainer:
 
                     loss = classification_loss
 
-                    if is_train and self.mi_criterion is not None:
+                    if is_train and self.mi_criterion is not None and hand_crafted_text_features is not None:
                         mi_loss = self.mi_criterion(processed_learnable_text_features, hand_crafted_text_features)
                         loss += mi_weight * mi_loss
                         mi_losses.update(mi_loss.item(), target.size(0))
