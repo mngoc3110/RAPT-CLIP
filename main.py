@@ -142,6 +142,9 @@ def setup_environment(args: argparse.Namespace) -> argparse.Namespace:
         device = torch.device("cpu")
     
     args.device = device
+    if device.type == 'cpu':
+        args.use_amp = False
+        print("=> Device is CPU. Disabling AMP (use_amp=False) to prevent GradScaler crash.")
     print(f"Using device: {device}")
 
     random.seed(args.seed)
