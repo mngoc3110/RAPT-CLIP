@@ -236,6 +236,7 @@ class Trainer:
 
                 if is_train:
                     self.optimizer.zero_grad()
+                    loss = loss.to(self.device) # Đảm bảo loss luôn ở trên CUDA
                     if self.use_amp:
                         self.scaler.scale(loss).backward()
                         if self.grad_clip > 0:

@@ -136,13 +136,13 @@ class LDAMLoss(nn.Module):
         self.weight = weight
 
     def forward(self, x, target):
-        index = torch.zeros_like(x, dtype=torch.uint8)
-        index.scatter_(1, target.data.view(-1, 1), 1)
+        index = torch.zeros_like(x, dtype=torch.bool)
+        index.scatter_(1, target.data.view(-1, 1), True)
         
-        index_float = index.type(torch.FloatTensor).to(x.device)
+        index_float = index.to(dtype=x.dtype, device=x.device)
         
         # Ensure m_list is on the same device as input x
-        m_list = self.m_list.to(x.device)
+        m_list = self.m_list.to(dtype=x.dtype, device=x.device)
         
         batch_m = torch.matmul(m_list[None, :], index_float.transpose(0, 1))
         batch_m = batch_m.view((-1, 1))
