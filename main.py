@@ -106,7 +106,7 @@ loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling fact
 
 # --- Model & Input ---
 model_group = parser.add_argument_group('Model & Input', 'Parameters for model architecture and data handling')
-model_group.add_argument('--text-type', default='prompt_ensemble', choices=['class_names', 'class_names_with_context', 'class_descriptor', 'prompt_ensemble'], help='Type of text prompts to use.')
+model_group.add_argument('--text-type', default='prompt_ensemble', choices=['class_names', 'class_names_with_context', 'class_descriptor', 'prompt_ensemble', 'au_guided_prompts'], help='Type of text prompts to use.')
 model_group.add_argument('--temporal-layers', type=int, default=1, help='Number of layers in the temporal modeling part.')
 model_group.add_argument('--contexts-number', type=int, default=8, help='Number of context vectors in the prompt learner.')
 model_group.add_argument('--class-token-position', type=str, default="end", help='Position of the class token in the prompt.')
