@@ -55,6 +55,7 @@ echo ">>> Bắt đầu huấn luyện RAPT-CLIP V2 trên tập RAER..."
 
 python main.py \
     --mode train \
+    --gpu 0 \
     --dataset ${DATASET} \
     --exper-name ${EXPER_NAME} \
     --root-dir ${ROOT_DIR} \
