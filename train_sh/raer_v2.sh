@@ -6,16 +6,16 @@
 export CUDA_VISIBLE_DEVICES=0
 
 # Thư mục gốc chứa dataset RAER
-ROOT_DIR="dataset"
+ROOT_DIR="/kaggle/input/datasets/bearmn/raer-video-emotion-dataset"
 
 # Files cấu trúc annotations
-TRAIN_ANNO="annotation/RAER/train_annotations.txt"
-VAL_ANNO="annotation/RAER/val_annotations.txt"
-TEST_ANNO="annotation/RAER/test_annotations.txt"
+TRAIN_ANNO="/kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt"
+VAL_ANNO="/kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt"
+TEST_ANNO="/kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt"
 
 # Bounding boxes
-FACE_BOXES="annotation/RAER/face_bounding_boxes.json"
-BODY_BOXES="annotation/RAER/body_bounding_boxes.json"
+FACE_BOXES="/kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/face.json"
+BODY_BOXES="/kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/body.json"
 
 # Mô hình CLIP pretrain
 CLIP_PATH="ViT-B/16"
