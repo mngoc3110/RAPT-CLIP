@@ -187,7 +187,11 @@ def run_robustness_tests(model, dataloader, args, out_dir):
     }
     
     with torch.no_grad():
-        for img_f, img_b, labels in tqdm(dataloader, desc="Evaluating"):
+        for batch in tqdm(dataloader, desc="Evaluating"):
+            if len(batch) == 4:
+                img_f, img_b, _, labels = batch
+            else:
+                img_f, img_b, labels = batch
             img_f = img_f.to(args.device)
             img_b = img_b.to(args.device)
             labels = labels.to(args.device).squeeze()

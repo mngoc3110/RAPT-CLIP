@@ -31,8 +31,8 @@ from utils.builders import build_model, get_class_info
 CHECKPOINT_PATH = os.path.join(
     os.path.dirname(__file__),
     "outputs",
-    "Ablation-RAER-FULL_fix_parameter_fullface_train_test-[02-28]-[11:01]",
-    "model_best.pth"
+    "RAER-ramp-up",
+    "model_best_slim.pth"
 )
 
 CLASS_LABELS = ["Neutral", "Enjoyment", "Confusion", "Fatigue", "Distraction"]

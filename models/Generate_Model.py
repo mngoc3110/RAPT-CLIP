@@ -70,7 +70,11 @@ class GenerateModel(nn.Module):
                                                      heads=8,
                                                      mlp_dim=1024,
                                                      dim_head=64)
-        self.clip_model_ = clip_model
+        # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
+        # Using object.__setattr__ bypasses nn.Module's __setattr__ so this reference
+        # is NEVER included in state_dict() → saves ~570MB per checkpoint.
+        # The reference is only needed during training when use_moco=True.
+        object.__setattr__(self, 'clip_model_', clip_model)
         self.project_fc = nn.Linear(1024, 512)
 
         # MoCo Initialization

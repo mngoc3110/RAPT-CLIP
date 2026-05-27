@@ -77,7 +77,11 @@ def run_tsne(model, dataloader, class_names, args, out_dir):
     labels_list = []
     
     with torch.no_grad():
-        for img_f, img_b, labels in tqdm(dataloader, desc="Extracting features"):
+        for batch in tqdm(dataloader, desc="Extracting features"):
+            if len(batch) == 4:
+                img_f, img_b, _, labels = batch
+            else:
+                img_f, img_b, labels = batch
             img_f = img_f.to(args.device)
             img_b = img_b.to(args.device)
             
@@ -130,7 +134,11 @@ def run_modality_ablation(model, dataloader, args, out_dir):
     results = {s: {"correct": 0, "total": 0} for s in scenarios}
     
     with torch.no_grad():
-        for img_f, img_b, labels in tqdm(dataloader, desc="Testing Modalities"):
+        for batch in tqdm(dataloader, desc="Testing Modalities"):
+            if len(batch) == 4:
+                img_f, img_b, _, labels = batch
+            else:
+                img_f, img_b, labels = batch
             img_f = img_f.to(args.device)
             img_b = img_b.to(args.device)
             labels = labels.to(args.device).squeeze()

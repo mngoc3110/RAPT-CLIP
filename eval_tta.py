@@ -88,20 +88,34 @@ def main():
     all_targets = []
     
     with torch.no_grad():
-        for i, (images_face, images_body, target) in enumerate(tqdm(test_loader, desc="TTA Eval")):
+        for i, batch in enumerate(tqdm(test_loader, desc="TTA Eval")):
+            if len(batch) == 4:
+                images_face, images_body, images_context, target = batch
+                images_context = images_context.to(device)
+            else:
+                images_face, images_body, target = batch
+                images_context = None
+
             images_face = images_face.to(device)
             images_body = images_body.to(device)
             target = target.to(device)
 
             # 1. Standard Forward
-            output_std, _, _, _ = model(images_face, images_body)
+            if images_context is not None:
+                output_std, _, _, _ = model(images_face, images_body, images_context)
+            else:
+                output_std, _, _, _ = model(images_face, images_body)
             prob_std = torch.softmax(output_std, dim=1)
 
             # 2. Flipped Forward (TTA)
             images_face_flip = torch.flip(images_face, dims=[-1])
             images_body_flip = torch.flip(images_body, dims=[-1])
             
-            output_flip, _, _, _ = model(images_face_flip, images_body_flip)
+            if images_context is not None:
+                images_context_flip = torch.flip(images_context, dims=[-1])
+                output_flip, _, _, _ = model(images_face_flip, images_body_flip, images_context_flip)
+            else:
+                output_flip, _, _, _ = model(images_face_flip, images_body_flip)
             prob_flip = torch.softmax(output_flip, dim=1)
 
             # 3. Ensemble (Average Probabilities)
