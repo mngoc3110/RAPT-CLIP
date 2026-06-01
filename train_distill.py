@@ -215,7 +215,7 @@ def main():
 
         pbar = tqdm(train_loader, desc=f"Train Epoch {epoch}", file=os.sys.stdout)
         for i, batch in enumerate(pbar):
-            images_face, images_body, target = batch[:3]
+            images_face, images_body, _, target = batch
             images_face = images_face.to(args.device)
             images_body = images_body.to(args.device)
             target = target.to(args.device)
@@ -293,7 +293,7 @@ def main():
 
         with torch.no_grad():
             for batch in tqdm(val_loader, desc=f"Val Epoch {epoch}"):
-                images_face, images_body, target = batch[:3]
+                images_face, images_body, _, target = batch
                 images_face = images_face.to(args.device)
                 images_body = images_body.to(args.device)
                 target = target.to(args.device)
@@ -361,7 +361,7 @@ def main():
     
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Testing Student"):
-            images_face, images_body, target = batch[:3]
+            images_face, images_body, _, target = batch
             images_face = images_face.to(args.device)
             images_body = images_body.to(args.device)
             target = target.to(args.device)
