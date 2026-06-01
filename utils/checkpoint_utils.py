@@ -40,6 +40,7 @@ CLIP_BACKBONE_PREFIXES = (
     "temporal_net_m.",       # MoCo momentum temporal
     "temporal_net_body_m.",  # MoCo momentum temporal body
     "project_fc_m.",         # MoCo momentum project_fc
+    "gate_fc_m.",            # MoCo momentum gate_fc
     "queue",                 # MoCo queue buffer (transient)
     "queue_ptr",             # MoCo queue pointer
 )

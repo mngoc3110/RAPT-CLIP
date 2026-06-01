@@ -103,7 +103,7 @@ loss_group.add_argument('--ldl-warmup', type=int, default=5, help='Warmup epochs
 loss_group.add_argument('--mixup-alpha', type=float, default=0.2, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable.')
 # NEW LDAM ARGS
 loss_group.add_argument('--ldam-max-m', type=float, default=0.5, help='Max margin for LDAM Loss.')
-loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling factor for LDAM Loss.')
+loss_group.add_argument('--ldam-s', type=float, default=3.0, help='Scaling factor for LDAM Loss (tuned to avoid Double-Scaling Trap with CLIP).')
 
 # --- Model & Input ---
 model_group = parser.add_argument_group('Model & Input', 'Parameters for model architecture and data handling')
@@ -285,7 +285,8 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
                 {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
-                {"params": model.face_adapter.parameters(), "lr": args.lr_adapter}
+                {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
+                {"params": model.gate_fc.parameters(), "lr": args.lr}
             ]
 
     if args.optimizer == 'SGD':
@@ -368,11 +369,17 @@ def run_training(args: argparse.Namespace) -> None:
         # 2. Save slim checkpoint (fine-tuned layers only, no optimizer) → model_best.pth
         # This reduces model_best.pth from ~1.3GB → ~20MB, with ZERO accuracy change.
         if is_best:
+            if hasattr(trainer, 'ema') and trainer.ema is not None:
+                trainer.ema.apply(trainer.model)
+            
             save_slim_checkpoint(
                 model=trainer.model,
                 path=best_checkpoint_path,
                 meta={'epoch': epoch + 1, 'best_acc': best_val_uar}
             )
+            
+            if hasattr(trainer, 'ema') and trainer.ema is not None:
+                trainer.ema.restore(trainer.model)
 
         # Record metrics
         epoch_time = time.time() - start_time

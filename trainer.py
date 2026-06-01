@@ -11,6 +11,31 @@ import sys
 from utils.utils import AverageMeter, get_loss_weight, get_loss_weight_rampdown
 from utils.loss import SemanticLDLLoss
 
+class ModelEMA:
+    def __init__(self, model, decay=0.999):
+        self.shadow = {name: p.clone().detach() for name, p in model.named_parameters() if p.requires_grad}
+        self.decay = decay
+        self.backup = {}
+
+    @torch.no_grad()
+    def update(self, model):
+        for name, param in model.named_parameters():
+            if param.requires_grad and name in self.shadow:
+                if self.shadow[name].device != param.device:
+                    self.shadow[name] = self.shadow[name].to(param.device)
+                self.shadow[name].mul_(self.decay).add_(param.data, alpha=1.0 - self.decay)
+
+    def apply(self, model):
+        self.backup = {name: p.clone() for name, p in model.named_parameters() if name in self.shadow}
+        for name, param in model.named_parameters():
+            if name in self.shadow:
+                param.data.copy_(self.shadow[name])
+
+    def restore(self, model):
+        for name, param in model.named_parameters():
+            if name in self.backup:
+                param.data.copy_(self.backup[name])
+
 class Trainer:
     """A class that encapsulates the training and validation logic."""
     def __init__(self, model, criterion, optimizer, scheduler, device,log_txt_path, 
@@ -41,6 +66,9 @@ class Trainer:
         self.use_ldl = use_ldl
         self.ldl_warmup = ldl_warmup
         print(f"DEBUG: Trainer initialized with use_ldl={use_ldl}, ldl_warmup={ldl_warmup}")
+        
+        # Initialize ModelEMA
+        self.ema = ModelEMA(self.model, decay=0.999)
         
         if self.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
@@ -249,6 +277,9 @@ class Trainer:
                         if self.grad_clip > 0:
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                         self.optimizer.step()
+                    
+                    # Update EMA shadow weights
+                    self.ema.update(self.model)
 
                 # Record metrics
                 preds = output.argmax(dim=1)
@@ -322,6 +353,14 @@ class Trainer:
     
     def validate(self, val_loader, epoch_num_str="Final"):
         """Executes one full validation run."""
+        has_ema = hasattr(self, 'ema') and self.ema is not None
+        if has_ema:
+            self.ema.apply(self.model)
+            
         res = self._run_one_epoch(val_loader, epoch_num_str, is_train=False)
+        
+        if has_ema:
+            self.ema.restore(self.model)
+            
         torch.cuda.empty_cache()
         return res
