@@ -28,13 +28,13 @@ python main.py \
   --print-freq 50 \
   --seed 42 \
   \
-  --root-dir ./ \
-  --train-annotation RAER/annotation/train.txt \
-  --val-annotation RAER/annotation/test.txt \
-  --test-annotation RAER/annotation/test.txt \
+  --root-dir /kaggle/input/datasets/bearmn/raer-video-emotion-dataset \
+  --train-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt \
+  --val-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
+  --test-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
   --clip-path ViT-B/16 \
-  --bounding-box-face RAER/bounding_box/face.json \
-  --bounding-box-body RAER/bounding_box/body.json \
+  --bounding-box-face /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/face.json \
+  --bounding-box-body /kaggle/input/datasets/bearmn/raer-video-emotion-dataset/RAER/bounding_box/body.json \
   \
   --optimizer AdamW \
   --lr 2e-5 \
