@@ -213,16 +213,30 @@ class VideoDataset(data.Dataset):
         images_face = list()
         images_context = list()
         
+        current_frame_idx = -1
         for seg_ind in indices:
             p = int(seg_ind)
             for i in range(self.duration):
                 img_pil = None
                 box = None
                 
-                # 1. Read Image
+                # 1. Read Image — smart sequential seek to avoid expensive cap.set() on every frame
                 if is_video_file:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, p)
-                    ret, frame = cap.read()
+                    gap = p - current_frame_idx
+                    if gap == 1:
+                        # Next consecutive frame: just read directly
+                        ret, frame = cap.read()
+                    elif 1 < gap <= 5:
+                        # Small gap: use grab() to skip without decoding (much faster than seek)
+                        for _ in range(gap - 1):
+                            cap.grab()
+                        ret, frame = cap.read()
+                    else:
+                        # Large gap or backward jump: forced seek
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, p)
+                        ret, frame = cap.read()
+                    current_frame_idx = p
+
                     if ret:
                         img_cv_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         img_pil = Image.fromarray(img_cv_rgb)
