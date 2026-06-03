@@ -31,7 +31,7 @@ from utils.builders import build_model, get_class_info
 CHECKPOINT_PATH = os.path.join(
     os.path.dirname(__file__),
     "outputs",
-    "RAER-ramp-up",
+    "RAER-ramp-down",
     "model_best_slim.pth"
 )
 
