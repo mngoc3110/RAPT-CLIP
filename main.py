@@ -80,7 +80,7 @@ optim_group.add_argument('--lr', type=float, default=2e-5, help='Initial learnin
 optim_group.add_argument('--lr-image-encoder', type=float, default=1e-6, help='Learning rate for the image encoder part (set to 0 to freeze).')
 optim_group.add_argument('--lr-prompt-learner', type=float, default=2e-4, help='Learning rate for the prompt learner.')
 optim_group.add_argument('--lr-adapter', type=float, default=1e-4, help='Learning rate for the adapter.')
-optim_group.add_argument('--weight-decay', type=float, default=0.0005, help='Weight decay for the optimizer.')
+optim_group.add_argument('--weight-decay', type=float, default=0.005, help='Weight decay for the optimizer.')
 optim_group.add_argument('--momentum', type=float, default=0.9, help='Momentum for the SGD optimizer.')
 optim_group.add_argument('--milestones', nargs='+', type=int, default=[10, 15], help='Epochs at which to decay the learning rate.')
 optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for learning rate decay.')
@@ -100,10 +100,10 @@ loss_group.add_argument('--label-smoothing', type=float, default=0.05, help='Lab
 loss_group.add_argument('--use-ldl', action='store_true', help='Use Semantic Label Distribution Learning (LDL) Loss.')
 loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temperature for LDL target distribution.')
 loss_group.add_argument('--ldl-warmup', type=int, default=5, help='Warmup epochs for LDL loss (during warmup, use CE).')
-loss_group.add_argument('--mixup-alpha', type=float, default=0.2, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable.')
+loss_group.add_argument('--mixup-alpha', type=float, default=0.0, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable. NOTE: Mixup is incompatible with LDAM (hard-label margin), keep 0.0 when using loss-type=ldam.')
 # NEW LDAM ARGS
 loss_group.add_argument('--ldam-max-m', type=float, default=0.5, help='Max margin for LDAM Loss.')
-loss_group.add_argument('--ldam-s', type=float, default=3.0, help='Scaling factor for LDAM Loss (tuned to avoid Double-Scaling Trap with CLIP).')
+loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling factor for LDAM Loss. s=30 works well with CLIP cosine-sim outputs (proven: 73.76%% UAR on RAER). Lower values (e.g. s=3) produce weak gradients.')
 
 # --- Model & Input ---
 model_group = parser.add_argument_group('Model & Input', 'Parameters for model architecture and data handling')
@@ -286,7 +286,7 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
-                {"params": model.gate_fc.parameters(), "lr": args.lr}
+                {"params": model.cmaf.parameters(), "lr": args.lr}
             ]
 
     if args.optimizer == 'SGD':

@@ -3,6 +3,7 @@ from models.Temporal_Model import *
 from models.Prompt_Learner import *
 from models.Text import class_descriptor_5_only_face
 from models.Adapter import Adapter
+from models.CrossModalAttentionFusion import CrossModalAttentionFusion
 from models.clip import clip
 import copy
 import itertools
@@ -77,13 +78,8 @@ class GenerateModel(nn.Module):
         object.__setattr__(self, 'clip_model_', clip_model)
         self.project_fc = nn.Linear(1024, 512)
 
-        # Gated Feature Fusion Network
-        self.gate_fc = nn.Sequential(
-            nn.Linear(1024, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1024),
-            nn.Sigmoid()
-        )
+        # Cross-Modal Attention Fusion (CMAF)
+        self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1)
 
         # MoCo Initialization
         if hasattr(args, 'use_moco') and args.use_moco:
@@ -99,7 +95,7 @@ class GenerateModel(nn.Module):
             self.temporal_net_m = copy.deepcopy(self.temporal_net)
             self.temporal_net_body_m = copy.deepcopy(self.temporal_net_body)
             self.project_fc_m = copy.deepcopy(self.project_fc)
-            self.gate_fc_m = copy.deepcopy(self.gate_fc)
+            self.cmaf_m = copy.deepcopy(self.cmaf)
 
             # Freeze momentum encoders
             for param in self.image_encoder_m.parameters(): param.requires_grad = False
@@ -107,7 +103,7 @@ class GenerateModel(nn.Module):
             for param in self.temporal_net_m.parameters(): param.requires_grad = False
             for param in self.temporal_net_body_m.parameters(): param.requires_grad = False
             for param in self.project_fc_m.parameters(): param.requires_grad = False
-            for param in self.gate_fc_m.parameters(): param.requires_grad = False
+            for param in self.cmaf_m.parameters(): param.requires_grad = False
 
             # Create queue
             self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
@@ -129,7 +125,7 @@ class GenerateModel(nn.Module):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.project_fc.parameters(), self.project_fc_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.gate_fc.parameters(), self.gate_fc_m.parameters()):
+        for param_q, param_k in zip(self.cmaf.parameters(), self.cmaf_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
 
     @torch.no_grad()
@@ -167,10 +163,8 @@ class GenerateModel(nn.Module):
         image_body_features = image_body_features.contiguous().view(n, t, -1)
         video_body_features = self.temporal_net_body_m(image_body_features)
 
-        # Concatenate and Project with Gated Feature Fusion
-        video_features = torch.cat((video_face_features, video_body_features), dim=-1)
-        gate = self.gate_fc_m(video_features)
-        video_features = video_features * gate
+        # Cross-Modal Attention Fusion (momentum)
+        video_features = self.cmaf_m(video_face_features, video_body_features)
         video_features = self.project_fc_m(video_features)
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
@@ -192,10 +186,8 @@ class GenerateModel(nn.Module):
         image_body_features = image_body_features.contiguous().view(n, t, -1)
         video_body_features = self.temporal_net_body(image_body_features)
 
-        # Concatenate the two parts with Gated Feature Fusion
-        video_features = torch.cat((video_face_features, video_body_features), dim=-1)
-        gate = self.gate_fc(video_features)
-        video_features = video_features * gate
+        # Cross-Modal Attention Fusion (CMAF)
+        video_features = self.cmaf(video_face_features, video_body_features)
         video_features = self.project_fc(video_features)
         # Robust normalization to avoid NaN on MPS
         video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)

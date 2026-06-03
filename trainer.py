@@ -180,6 +180,20 @@ class Trainer:
                 images_face = images_face.to(self.device)
                 images_body = images_body.to(self.device)
                 target = target.to(self.device)
+
+                # --- Guard: validate target labels are in-bounds ---
+                num_classes_expected = None
+                if hasattr(self.model, 'num_classes'):
+                    num_classes_expected = self.model.num_classes
+                elif hasattr(self.model, 'args') and hasattr(self.model.args, 'num_classes'):
+                    num_classes_expected = self.model.args.num_classes
+                if num_classes_expected is not None:
+                    invalid_mask = (target < 0) | (target >= num_classes_expected)
+                    if invalid_mask.any():
+                        bad_vals = target[invalid_mask].cpu().tolist()
+                        print(f"\n[CRITICAL] Batch {i}: target labels out of bounds [0, {num_classes_expected-1}]: {bad_vals}")
+                        print(f"  -> Clamping to valid range to avoid CUDA crash. CHECK YOUR DATALOADER LABELS!")
+                        target = target.clamp(0, num_classes_expected - 1)
                 
                 # Apply Mixup
                 if is_train and self.mixup_alpha > 0:
@@ -235,11 +249,13 @@ class Trainer:
                         print(f"\n[DEBUG] Batch 0 Check:")
                         print(f"  Logits Shape: {output.shape}")
                         print(f"  Target Shape: {target.shape}")
-                        print(f"  Target Min/Max: {target.min().item()} / {target.max().item()}")
-                        # Handle NaN print safely
+                        # Move to CPU first to avoid triggering CUDA sync errors on bad targets
+                        target_cpu = target.detach().cpu()
+                        print(f"  Target Min/Max: {target_cpu.min().item()} / {target_cpu.max().item()}")
+                        print(f"  Unique Targets: {target_cpu.unique().tolist()}")
                         logits_np = output[:2].detach().cpu().numpy()
                         print(f"  Logits (first 2): {logits_np}")
-                        print(f"  Targets (first 2): {target[:2].detach().cpu().numpy()}")
+                        print(f"  Targets (first 2): {target_cpu[:2].numpy()}")
                         print(f"  CE/LDL Loss: {classification_loss.item():.6f}")
                         if hasattr(self.model, 'args') and hasattr(self.model.args, 'temperature'):
                              print(f"  Model Temperature: {self.model.args.temperature}")
