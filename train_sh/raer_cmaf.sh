@@ -27,7 +27,7 @@ python main.py \
   --batch-size 4 \
   --print-freq 50 \
   --seed 42 \
-  \
+  --workers 2 \
   --root-dir /kaggle/input/datasets/bearmn/raer-video-emotion-dataset \
   --train-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/train.txt \
   --val-annotation /kaggle/input/datasets/bearmn/raer-annot/annotation/test.txt \
@@ -68,4 +68,5 @@ python main.py \
   --image-size 224 \
   --temperature 0.07 \
   --crop-body \
-  --drop-path-rate 0.1
+  --drop-path-rate 0.1 \
+  --use-amp
