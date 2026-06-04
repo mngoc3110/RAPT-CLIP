@@ -70,3 +70,10 @@ python main.py \
   --crop-body \
   --drop-path-rate 0.1 \
   --use-amp
+
+# ============================================================================
+# HOW TO RESUME TRAINING:
+# To resume training from a checkpoint (e.g. model.pth), add a backslash '\'
+# to the line above and append the resume flag:
+#   --resume /path/to/checkpoint/model.pth
+# ============================================================================

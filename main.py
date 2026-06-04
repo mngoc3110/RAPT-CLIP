@@ -296,8 +296,6 @@ def run_training(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported.")
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma)
-    
     # Resume from checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -321,6 +319,16 @@ def run_training(args: argparse.Namespace) -> None:
             print(f"=> Loaded checkpoint '{args.resume}' (epoch {start_epoch})")
         else:
             print(f"=> No checkpoint found at '{args.resume}'")
+
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma, last_epoch=start_epoch - 1)
+
+    if args.resume and os.path.isfile(args.resume):
+        if 'scheduler' in checkpoint:
+            try:
+                scheduler.load_state_dict(checkpoint['scheduler'])
+                print("=> Loaded scheduler state dict from checkpoint.")
+            except Exception as e:
+                print(f"=> Warning: Could not resume scheduler state dict: {e}")
 
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
@@ -363,6 +371,7 @@ def run_training(args: argparse.Namespace) -> None:
             'state_dict': trainer.model.state_dict(),
             'best_acc': best_val_uar,
             'optimizer': trainer.optimizer.state_dict(),
+            'scheduler': trainer.scheduler.state_dict(),
             'recorder': recorder
         }, False, checkpoint_path, checkpoint_path)  # always overwrite model.pth
 
