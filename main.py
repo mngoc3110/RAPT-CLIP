@@ -320,6 +320,10 @@ def run_training(args: argparse.Namespace) -> None:
         else:
             print(f"=> No checkpoint found at '{args.resume}'")
 
+    for group in optimizer.param_groups:
+        if 'initial_lr' not in group:
+            group['initial_lr'] = group['lr']
+
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma, last_epoch=start_epoch - 1)
 
     if args.resume and os.path.isfile(args.resume):
