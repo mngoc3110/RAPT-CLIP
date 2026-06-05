@@ -8,6 +8,29 @@ from models.clip import clip
 import copy
 import itertools
 
+class LightweightMotionEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv3d(3, 64, kernel_size=(3, 5, 5), stride=(1, 2, 2), padding=(1, 2, 2)),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2)),
+            nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1)),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool3d((None, 1, 1)) # pools H, W
+        )
+        self.fc = nn.Linear(128, 512)
+        
+    def forward(self, x):
+        # x: (B, T, C, H, W) -> Conv3d expects (B, C, T, H, W)
+        x = x.permute(0, 2, 1, 3, 4)
+        out = self.net(x) # (B, 128, T, 1, 1)
+        out = out.squeeze(-1).squeeze(-1).permute(0, 2, 1) # (B, T, 128)
+        out = self.fc(out) # (B, T, 512)
+        return out
+
 class GenerateModel(nn.Module):
     def __init__(self, input_text, clip_model, args):
         super().__init__()
@@ -62,6 +85,10 @@ class GenerateModel(nn.Module):
         self.use_context = getattr(args, 'use_context', False)
         print(f"=> Using Context Stream: {self.use_context}")
 
+        # Motion Stream Configuration
+        self.use_motion = getattr(args, 'use_motion', False)
+        print(f"=> Using Motion Stream (RGB-Diff): {self.use_motion}")
+
         self.temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
                                                      input_dim=512,
                                                      depth=args.temporal_layers,
@@ -84,10 +111,21 @@ class GenerateModel(nn.Module):
                                                          mlp_dim=1024,
                                                          dim_head=64)
 
+        if self.use_motion:
+            self.motion_encoder = LightweightMotionEncoder()
+            self.temporal_net_motion = Temporal_Transformer_AttnPool(num_patches=16,
+                                                         input_dim=512,
+                                                         depth=args.temporal_layers,
+                                                         heads=8,
+                                                         mlp_dim=1024,
+                                                         dim_head=64)
+
         # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
         object.__setattr__(self, 'clip_model_', clip_model)
         
-        in_dim = 1536 if self.use_context else 1024
+        in_dim = 1024
+        if self.use_context: in_dim += 512
+        if self.use_motion: in_dim += 512
         self.project_fc = nn.Linear(in_dim, 512)
 
         # Fusion Selection: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion)
@@ -119,6 +157,9 @@ class GenerateModel(nn.Module):
             self.temporal_net_body_m = copy.deepcopy(self.temporal_net_body)
             if self.use_context:
                 self.temporal_net_context_m = copy.deepcopy(self.temporal_net_context)
+            if self.use_motion:
+                self.motion_encoder_m = copy.deepcopy(self.motion_encoder)
+                self.temporal_net_motion_m = copy.deepcopy(self.temporal_net_motion)
             self.project_fc_m = copy.deepcopy(self.project_fc)
             
             if self.fusion_type == 'gfi':
@@ -133,6 +174,9 @@ class GenerateModel(nn.Module):
             for param in self.temporal_net_body_m.parameters(): param.requires_grad = False
             if self.use_context:
                 for param in self.temporal_net_context_m.parameters(): param.requires_grad = False
+            if self.use_motion:
+                for param in self.motion_encoder_m.parameters(): param.requires_grad = False
+                for param in self.temporal_net_motion_m.parameters(): param.requires_grad = False
             for param in self.project_fc_m.parameters(): param.requires_grad = False
             
             if self.fusion_type == 'gfi':
@@ -160,6 +204,11 @@ class GenerateModel(nn.Module):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         if self.use_context:
             for param_q, param_k in zip(self.temporal_net_context.parameters(), self.temporal_net_context_m.parameters()):
+                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
+        if self.use_motion:
+            for param_q, param_k in zip(self.motion_encoder.parameters(), self.motion_encoder_m.parameters()):
+                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
+            for param_q, param_k in zip(self.temporal_net_motion.parameters(), self.temporal_net_motion_m.parameters()):
                 param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.project_fc.parameters(), self.project_fc_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
@@ -191,6 +240,14 @@ class GenerateModel(nn.Module):
 
     @torch.no_grad()
     def forward_momentum(self, image_face, image_body, image_context=None):
+        # Motion Part
+        if self.use_motion:
+            image_motion = torch.zeros_like(image_face)
+            image_motion[:, :-1] = image_face[:, 1:] - image_face[:, :-1]
+            image_motion[:, -1] = image_motion[:, -2]
+            image_motion_features = self.motion_encoder_m(image_motion)
+            video_motion_features = self.temporal_net_motion_m(image_motion_features)
+
         # Face Part
         n, t, c, h, w = image_face.shape
         image_face = image_face.contiguous().view(-1, c, h, w)
@@ -217,10 +274,10 @@ class GenerateModel(nn.Module):
 
         # Fusion (momentum)
         if self.fusion_type == 'gfi':
+            features_to_concat = [video_face_features, video_body_features]
             if self.use_context:
-                video_features = torch.cat((video_face_features, video_body_features, video_context_features), dim=-1)
-            else:
-                video_features = torch.cat((video_face_features, video_body_features), dim=-1)
+                features_to_concat.append(video_context_features)
+            video_features = torch.cat(features_to_concat, dim=-1)
             gate = self.gate_fc_m(video_features)
             video_features = video_features * gate
         else:
@@ -229,12 +286,23 @@ class GenerateModel(nn.Module):
             else:
                 video_features = self.cmaf_m(video_face_features, video_body_features)
             
+        if self.use_motion:
+            video_features = torch.cat((video_features, video_motion_features), dim=-1)
+
         video_features = self.project_fc_m(video_features)
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
         
     def forward(self, image_face, image_body, image_context=None):
         ################# Visual Part #################
+        # Motion Part
+        if self.use_motion:
+            image_motion = torch.zeros_like(image_face)
+            image_motion[:, :-1] = image_face[:, 1:] - image_face[:, :-1]
+            image_motion[:, -1] = image_motion[:, -2]
+            image_motion_features = self.motion_encoder(image_motion)
+            video_motion_features = self.temporal_net_motion(image_motion_features)
+
         # Face Part
         n, t, c, h, w = image_face.shape
         image_face_reshaped = image_face.contiguous().view(-1, c, h, w)
@@ -261,10 +329,10 @@ class GenerateModel(nn.Module):
 
         # Fusion (CMAF or GFI)
         if self.fusion_type == 'gfi':
+            features_to_concat = [video_face_features, video_body_features]
             if self.use_context:
-                video_features = torch.cat((video_face_features, video_body_features, video_context_features), dim=-1)
-            else:
-                video_features = torch.cat((video_face_features, video_body_features), dim=-1)
+                features_to_concat.append(video_context_features)
+            video_features = torch.cat(features_to_concat, dim=-1)
             gate = self.gate_fc(video_features)
             video_features = video_features * gate
         else:
@@ -273,6 +341,9 @@ class GenerateModel(nn.Module):
             else:
                 video_features = self.cmaf(video_face_features, video_body_features)
             
+        if self.use_motion:
+            video_features = torch.cat((video_features, video_motion_features), dim=-1)
+
         video_features = self.project_fc(video_features)
         # Robust normalization to avoid NaN on MPS
         video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)

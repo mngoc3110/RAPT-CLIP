@@ -129,6 +129,7 @@ model_group.add_argument('--use-v2', action='store_true', help='Use V2 Triple-St
 model_group.add_argument('--modality-dropout', type=float, default=0.3, help='Modality Dropout probability.')
 model_group.add_argument('--fusion-type', type=str, default='cmaf', choices=['gfi', 'cmaf'], help='Fusion method: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion).')
 model_group.add_argument('--use-context', action='store_true', help='Enable context stream (Triple Stream: Face, Body, Context).')
+model_group.add_argument('--use-motion', action='store_true', help='Enable lightweight RGB-Difference pseudo-motion stream.')
 
 # ==================== Helper Functions ====================
 def setup_environment(args: argparse.Namespace) -> argparse.Namespace:
