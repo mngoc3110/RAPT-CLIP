@@ -58,6 +58,10 @@ class GenerateModel(nn.Module):
         self.register_buffer("hand_crafted_prompt_embeddings", embedding)
 
 
+        # Context Stream Configuration
+        self.use_context = getattr(args, 'use_context', False)
+        print(f"=> Using Context Stream: {self.use_context}")
+
         self.temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
                                                      input_dim=512,
                                                      depth=args.temporal_layers,
@@ -71,15 +75,34 @@ class GenerateModel(nn.Module):
                                                      heads=8,
                                                      mlp_dim=1024,
                                                      dim_head=64)
-        # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
-        # Using object.__setattr__ bypasses nn.Module's __setattr__ so this reference
-        # is NEVER included in state_dict() → saves ~570MB per checkpoint.
-        # The reference is only needed during training when use_moco=True.
-        object.__setattr__(self, 'clip_model_', clip_model)
-        self.project_fc = nn.Linear(1024, 512)
 
-        # Cross-Modal Attention Fusion (CMAF)
-        self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1)
+        if self.use_context:
+            self.temporal_net_context = Temporal_Transformer_AttnPool(num_patches=16,
+                                                         input_dim=512,
+                                                         depth=args.temporal_layers,
+                                                         heads=8,
+                                                         mlp_dim=1024,
+                                                         dim_head=64)
+
+        # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
+        object.__setattr__(self, 'clip_model_', clip_model)
+        
+        in_dim = 1536 if self.use_context else 1024
+        self.project_fc = nn.Linear(in_dim, 512)
+
+        # Fusion Selection: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion)
+        self.fusion_type = getattr(args, 'fusion_type', 'cmaf')
+        print(f"=> Using Fusion Type: {self.fusion_type}")
+        
+        if self.fusion_type == 'gfi':
+            self.gate_fc = nn.Sequential(
+                nn.Linear(in_dim, in_dim // 4),
+                nn.ReLU(),
+                nn.Linear(in_dim // 4, in_dim),
+                nn.Sigmoid()
+            )
+        else:
+            self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context)
 
         # MoCo Initialization
         if hasattr(args, 'use_moco') and args.use_moco:
@@ -94,16 +117,28 @@ class GenerateModel(nn.Module):
             self.face_adapter_m = copy.deepcopy(self.face_adapter)
             self.temporal_net_m = copy.deepcopy(self.temporal_net)
             self.temporal_net_body_m = copy.deepcopy(self.temporal_net_body)
+            if self.use_context:
+                self.temporal_net_context_m = copy.deepcopy(self.temporal_net_context)
             self.project_fc_m = copy.deepcopy(self.project_fc)
-            self.cmaf_m = copy.deepcopy(self.cmaf)
+            
+            if self.fusion_type == 'gfi':
+                self.gate_fc_m = copy.deepcopy(self.gate_fc)
+            else:
+                self.cmaf_m = copy.deepcopy(self.cmaf)
 
             # Freeze momentum encoders
             for param in self.image_encoder_m.parameters(): param.requires_grad = False
             for param in self.face_adapter_m.parameters(): param.requires_grad = False
             for param in self.temporal_net_m.parameters(): param.requires_grad = False
             for param in self.temporal_net_body_m.parameters(): param.requires_grad = False
+            if self.use_context:
+                for param in self.temporal_net_context_m.parameters(): param.requires_grad = False
             for param in self.project_fc_m.parameters(): param.requires_grad = False
-            for param in self.cmaf_m.parameters(): param.requires_grad = False
+            
+            if self.fusion_type == 'gfi':
+                for param in self.gate_fc_m.parameters(): param.requires_grad = False
+            else:
+                for param in self.cmaf_m.parameters(): param.requires_grad = False
 
             # Create queue
             self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
@@ -123,10 +158,18 @@ class GenerateModel(nn.Module):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.temporal_net_body.parameters(), self.temporal_net_body_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
+        if self.use_context:
+            for param_q, param_k in zip(self.temporal_net_context.parameters(), self.temporal_net_context_m.parameters()):
+                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.project_fc.parameters(), self.project_fc_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.cmaf.parameters(), self.cmaf_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
+        
+        if self.fusion_type == 'gfi':
+            for param_q, param_k in zip(self.gate_fc.parameters(), self.gate_fc_m.parameters()):
+                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
+        else:
+            for param_q, param_k in zip(self.cmaf.parameters(), self.cmaf_m.parameters()):
+                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
@@ -163,8 +206,29 @@ class GenerateModel(nn.Module):
         image_body_features = image_body_features.contiguous().view(n, t, -1)
         video_body_features = self.temporal_net_body_m(image_body_features)
 
-        # Cross-Modal Attention Fusion (momentum)
-        video_features = self.cmaf_m(video_face_features, video_body_features)
+        # Context Part
+        if self.use_context:
+            assert image_context is not None
+            n, t, c, h, w = image_context.shape
+            image_context = image_context.contiguous().view(-1, c, h, w)
+            image_context_features = self.image_encoder_m(image_context.type(self.dtype))
+            image_context_features = image_context_features.contiguous().view(n, t, -1)
+            video_context_features = self.temporal_net_context_m(image_context_features)
+
+        # Fusion (momentum)
+        if self.fusion_type == 'gfi':
+            if self.use_context:
+                video_features = torch.cat((video_face_features, video_body_features, video_context_features), dim=-1)
+            else:
+                video_features = torch.cat((video_face_features, video_body_features), dim=-1)
+            gate = self.gate_fc_m(video_features)
+            video_features = video_features * gate
+        else:
+            if self.use_context:
+                video_features = self.cmaf_m(video_face_features, video_body_features, video_context_features)
+            else:
+                video_features = self.cmaf_m(video_face_features, video_body_features)
+            
         video_features = self.project_fc_m(video_features)
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
@@ -186,8 +250,29 @@ class GenerateModel(nn.Module):
         image_body_features = image_body_features.contiguous().view(n, t, -1)
         video_body_features = self.temporal_net_body(image_body_features)
 
-        # Cross-Modal Attention Fusion (CMAF)
-        video_features = self.cmaf(video_face_features, video_body_features)
+        # Context Part
+        if self.use_context:
+            assert image_context is not None, "image_context must be provided when use_context=True"
+            n, t, c, h, w = image_context.shape
+            image_context_reshaped = image_context.contiguous().view(-1, c, h, w)
+            image_context_features = self.image_encoder(image_context_reshaped.type(self.dtype))
+            image_context_features = image_context_features.contiguous().view(n, t, -1)
+            video_context_features = self.temporal_net_context(image_context_features)
+
+        # Fusion (CMAF or GFI)
+        if self.fusion_type == 'gfi':
+            if self.use_context:
+                video_features = torch.cat((video_face_features, video_body_features, video_context_features), dim=-1)
+            else:
+                video_features = torch.cat((video_face_features, video_body_features), dim=-1)
+            gate = self.gate_fc(video_features)
+            video_features = video_features * gate
+        else:
+            if self.use_context:
+                video_features = self.cmaf(video_face_features, video_body_features, video_context_features)
+            else:
+                video_features = self.cmaf(video_face_features, video_body_features)
+            
         video_features = self.project_fc(video_features)
         # Robust normalization to avoid NaN on MPS
         video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)
