@@ -296,6 +296,10 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
             if hasattr(model, 'temporal_net_context'):
                 optimizer_grouped_parameters.append({"params": model.temporal_net_context.parameters(), "lr": args.lr})
+            if hasattr(model, 'motion_encoder'):
+                optimizer_grouped_parameters.append({"params": model.motion_encoder.parameters(), "lr": args.lr})
+            if hasattr(model, 'temporal_net_motion'):
+                optimizer_grouped_parameters.append({"params": model.temporal_net_motion.parameters(), "lr": args.lr})
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
