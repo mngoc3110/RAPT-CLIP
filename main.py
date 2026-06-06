@@ -129,7 +129,6 @@ model_group.add_argument('--use-v2', action='store_true', help='Use V2 Triple-St
 model_group.add_argument('--modality-dropout', type=float, default=0.3, help='Modality Dropout probability.')
 model_group.add_argument('--fusion-type', type=str, default='cmaf', choices=['gfi', 'cmaf'], help='Fusion method: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion).')
 model_group.add_argument('--use-context', action='store_true', help='Enable context stream (Triple Stream: Face, Body, Context).')
-model_group.add_argument('--use-motion', action='store_true', help='Enable lightweight RGB-Difference pseudo-motion stream.')
 
 # ==================== Helper Functions ====================
 def setup_environment(args: argparse.Namespace) -> argparse.Namespace:
@@ -259,8 +258,7 @@ def run_training(args: argparse.Namespace) -> None:
     
     if hasattr(args, 'ablation_no_text') and args.ablation_no_text:
         optimizer_grouped_parameters = [
-            {"params": model.temporal_net.parameters(), "lr": args.lr},
-            {"params": model.temporal_net_body.parameters(), "lr": args.lr},
+            {"params": model.unified_temporal_net.parameters(), "lr": args.lr},
             {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
             {"params": model.project_fc.parameters(), "lr": args.lr},
             {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
@@ -283,8 +281,7 @@ def run_training(args: argparse.Namespace) -> None:
         else:
             # V1 Architecture
             optimizer_grouped_parameters = [
-                {"params": model.temporal_net.parameters(), "lr": args.lr},
-                {"params": model.temporal_net_body.parameters(), "lr": args.lr},
+                {"params": model.unified_temporal_net.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
                 {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
@@ -294,12 +291,6 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
-            if hasattr(model, 'temporal_net_context'):
-                optimizer_grouped_parameters.append({"params": model.temporal_net_context.parameters(), "lr": args.lr})
-            if hasattr(model, 'motion_encoder'):
-                optimizer_grouped_parameters.append({"params": model.motion_encoder.parameters(), "lr": args.lr})
-            if hasattr(model, 'temporal_net_motion'):
-                optimizer_grouped_parameters.append({"params": model.temporal_net_motion.parameters(), "lr": args.lr})
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)

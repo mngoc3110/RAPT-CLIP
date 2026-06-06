@@ -8,29 +8,6 @@ from models.clip import clip
 import copy
 import itertools
 
-class LightweightMotionEncoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv3d(3, 64, kernel_size=(3, 5, 5), stride=(1, 2, 2), padding=(1, 2, 2)),
-            nn.BatchNorm3d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2)),
-            nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1)),
-            nn.BatchNorm3d(128),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool3d((None, 1, 1)) # pools H, W
-        )
-        self.fc = nn.Linear(128, 512)
-        
-    def forward(self, x):
-        # x: (B, T, C, H, W) -> Conv3d expects (B, C, T, H, W)
-        x = x.permute(0, 2, 1, 3, 4)
-        out = self.net(x) # (B, 128, T, 1, 1)
-        out = out.squeeze(-1).squeeze(-1).permute(0, 2, 1) # (B, T, 128)
-        out = self.fc(out) # (B, T, 512)
-        return out
-
 class GenerateModel(nn.Module):
     def __init__(self, input_text, clip_model, args):
         super().__init__()
@@ -85,47 +62,18 @@ class GenerateModel(nn.Module):
         self.use_context = getattr(args, 'use_context', False)
         print(f"=> Using Context Stream: {self.use_context}")
 
-        # Motion Stream Configuration
-        self.use_motion = getattr(args, 'use_motion', False)
-        print(f"=> Using Motion Stream (RGB-Diff): {self.use_motion}")
+        in_dim = 1536 if self.use_context else 1024
 
-        self.temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
-                                                     input_dim=512,
+        self.unified_temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
+                                                     input_dim=in_dim,
                                                      depth=args.temporal_layers,
                                                      heads=8,
                                                      mlp_dim=1024,
                                                      dim_head=64)
-        
-        self.temporal_net_body = Temporal_Transformer_AttnPool(num_patches=16,
-                                                     input_dim=512,
-                                                     depth=args.temporal_layers,
-                                                     heads=8,
-                                                     mlp_dim=1024,
-                                                     dim_head=64)
-
-        if self.use_context:
-            self.temporal_net_context = Temporal_Transformer_AttnPool(num_patches=16,
-                                                         input_dim=512,
-                                                         depth=args.temporal_layers,
-                                                         heads=8,
-                                                         mlp_dim=1024,
-                                                         dim_head=64)
-
-        if self.use_motion:
-            self.motion_encoder = LightweightMotionEncoder()
-            self.temporal_net_motion = Temporal_Transformer_AttnPool(num_patches=16,
-                                                         input_dim=512,
-                                                         depth=args.temporal_layers,
-                                                         heads=8,
-                                                         mlp_dim=1024,
-                                                         dim_head=64)
 
         # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
         object.__setattr__(self, 'clip_model_', clip_model)
         
-        in_dim = 1024
-        if self.use_context: in_dim += 512
-        if self.use_motion: in_dim += 512
         self.project_fc = nn.Linear(in_dim, 512)
 
         # Fusion Selection: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion)
@@ -153,13 +101,7 @@ class GenerateModel(nn.Module):
             # Create momentum encoders
             self.image_encoder_m = copy.deepcopy(self.image_encoder)
             self.face_adapter_m = copy.deepcopy(self.face_adapter)
-            self.temporal_net_m = copy.deepcopy(self.temporal_net)
-            self.temporal_net_body_m = copy.deepcopy(self.temporal_net_body)
-            if self.use_context:
-                self.temporal_net_context_m = copy.deepcopy(self.temporal_net_context)
-            if self.use_motion:
-                self.motion_encoder_m = copy.deepcopy(self.motion_encoder)
-                self.temporal_net_motion_m = copy.deepcopy(self.temporal_net_motion)
+            self.unified_temporal_net_m = copy.deepcopy(self.unified_temporal_net)
             self.project_fc_m = copy.deepcopy(self.project_fc)
             
             if self.fusion_type == 'gfi':
@@ -170,13 +112,7 @@ class GenerateModel(nn.Module):
             # Freeze momentum encoders
             for param in self.image_encoder_m.parameters(): param.requires_grad = False
             for param in self.face_adapter_m.parameters(): param.requires_grad = False
-            for param in self.temporal_net_m.parameters(): param.requires_grad = False
-            for param in self.temporal_net_body_m.parameters(): param.requires_grad = False
-            if self.use_context:
-                for param in self.temporal_net_context_m.parameters(): param.requires_grad = False
-            if self.use_motion:
-                for param in self.motion_encoder_m.parameters(): param.requires_grad = False
-                for param in self.temporal_net_motion_m.parameters(): param.requires_grad = False
+            for param in self.unified_temporal_net_m.parameters(): param.requires_grad = False
             for param in self.project_fc_m.parameters(): param.requires_grad = False
             
             if self.fusion_type == 'gfi':
@@ -198,18 +134,8 @@ class GenerateModel(nn.Module):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.face_adapter.parameters(), self.face_adapter_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.temporal_net.parameters(), self.temporal_net_m.parameters()):
+        for param_q, param_k in zip(self.unified_temporal_net.parameters(), self.unified_temporal_net_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.temporal_net_body.parameters(), self.temporal_net_body_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        if self.use_context:
-            for param_q, param_k in zip(self.temporal_net_context.parameters(), self.temporal_net_context_m.parameters()):
-                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        if self.use_motion:
-            for param_q, param_k in zip(self.motion_encoder.parameters(), self.motion_encoder_m.parameters()):
-                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-            for param_q, param_k in zip(self.temporal_net_motion.parameters(), self.temporal_net_motion_m.parameters()):
-                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         for param_q, param_k in zip(self.project_fc.parameters(), self.project_fc_m.parameters()):
             param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
         
@@ -240,109 +166,81 @@ class GenerateModel(nn.Module):
 
     @torch.no_grad()
     def forward_momentum(self, image_face, image_body, image_context=None):
-        # Motion Part
-        if self.use_motion:
-            image_motion = torch.zeros_like(image_face)
-            image_motion[:, :-1] = image_face[:, 1:] - image_face[:, :-1]
-            image_motion[:, -1] = image_motion[:, -2]
-            image_motion_features = self.motion_encoder_m(image_motion)
-            video_motion_features = self.temporal_net_motion_m(image_motion_features)
+        n, t, c, h, w = image_face.shape
 
         # Face Part
-        n, t, c, h, w = image_face.shape
         image_face = image_face.contiguous().view(-1, c, h, w)
         image_face_features = self.image_encoder_m(image_face.type(self.dtype))
         image_face_features = self.face_adapter_m(image_face_features)
-        image_face_features = image_face_features.contiguous().view(n, t, -1)
-        video_face_features = self.temporal_net_m(image_face_features)
         
         # Body Part
-        n, t, c, h, w = image_body.shape
         image_body = image_body.contiguous().view(-1, c, h, w)
         image_body_features = self.image_encoder_m(image_body.type(self.dtype))
-        image_body_features = image_body_features.contiguous().view(n, t, -1)
-        video_body_features = self.temporal_net_body_m(image_body_features)
 
         # Context Part
         if self.use_context:
             assert image_context is not None
-            n, t, c, h, w = image_context.shape
             image_context = image_context.contiguous().view(-1, c, h, w)
             image_context_features = self.image_encoder_m(image_context.type(self.dtype))
-            image_context_features = image_context_features.contiguous().view(n, t, -1)
-            video_context_features = self.temporal_net_context_m(image_context_features)
 
-        # Fusion (momentum)
+        # Frame-Level Fusion (momentum)
         if self.fusion_type == 'gfi':
-            features_to_concat = [video_face_features, video_body_features]
+            features_to_concat = [image_face_features, image_body_features]
             if self.use_context:
-                features_to_concat.append(video_context_features)
-            video_features = torch.cat(features_to_concat, dim=-1)
-            gate = self.gate_fc_m(video_features)
-            video_features = video_features * gate
+                features_to_concat.append(image_context_features)
+            fused_frame_features = torch.cat(features_to_concat, dim=-1)
+            gate = self.gate_fc_m(fused_frame_features)
+            fused_frame_features = fused_frame_features * gate
         else:
             if self.use_context:
-                video_features = self.cmaf_m(video_face_features, video_body_features, video_context_features)
+                fused_frame_features = self.cmaf_m(image_face_features, image_body_features, image_context_features)
             else:
-                video_features = self.cmaf_m(video_face_features, video_body_features)
+                fused_frame_features = self.cmaf_m(image_face_features, image_body_features)
             
-        if self.use_motion:
-            video_features = torch.cat((video_features, video_motion_features), dim=-1)
-
+        # Unified Temporal Transformer (momentum)
+        fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
+        video_features = self.unified_temporal_net_m(fused_frame_features)
+        
         video_features = self.project_fc_m(video_features)
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
         return video_features
         
     def forward(self, image_face, image_body, image_context=None):
         ################# Visual Part #################
-        # Motion Part
-        if self.use_motion:
-            image_motion = torch.zeros_like(image_face)
-            image_motion[:, :-1] = image_face[:, 1:] - image_face[:, :-1]
-            image_motion[:, -1] = image_motion[:, -2]
-            image_motion_features = self.motion_encoder(image_motion)
-            video_motion_features = self.temporal_net_motion(image_motion_features)
+        n, t, c, h, w = image_face.shape
 
         # Face Part
-        n, t, c, h, w = image_face.shape
         image_face_reshaped = image_face.contiguous().view(-1, c, h, w)
         image_face_features = self.image_encoder(image_face_reshaped.type(self.dtype))
         image_face_features = self.face_adapter(image_face_features) # Apply EAA
-        image_face_features = image_face_features.contiguous().view(n, t, -1)
-        video_face_features = self.temporal_net(image_face_features)  # (4*512)
         
         # Body Part
-        n, t, c, h, w = image_body.shape
         image_body_reshaped = image_body.contiguous().view(-1, c, h, w)
         image_body_features = self.image_encoder(image_body_reshaped.type(self.dtype))
-        image_body_features = image_body_features.contiguous().view(n, t, -1)
-        video_body_features = self.temporal_net_body(image_body_features)
 
         # Context Part
         if self.use_context:
             assert image_context is not None, "image_context must be provided when use_context=True"
-            n, t, c, h, w = image_context.shape
             image_context_reshaped = image_context.contiguous().view(-1, c, h, w)
             image_context_features = self.image_encoder(image_context_reshaped.type(self.dtype))
-            image_context_features = image_context_features.contiguous().view(n, t, -1)
-            video_context_features = self.temporal_net_context(image_context_features)
 
-        # Fusion (CMAF or GFI)
+        # Frame-Level Fusion (CMAF or GFI)
         if self.fusion_type == 'gfi':
-            features_to_concat = [video_face_features, video_body_features]
+            features_to_concat = [image_face_features, image_body_features]
             if self.use_context:
-                features_to_concat.append(video_context_features)
-            video_features = torch.cat(features_to_concat, dim=-1)
-            gate = self.gate_fc(video_features)
-            video_features = video_features * gate
+                features_to_concat.append(image_context_features)
+            fused_frame_features = torch.cat(features_to_concat, dim=-1)
+            gate = self.gate_fc(fused_frame_features)
+            fused_frame_features = fused_frame_features * gate
         else:
             if self.use_context:
-                video_features = self.cmaf(video_face_features, video_body_features, video_context_features)
+                fused_frame_features = self.cmaf(image_face_features, image_body_features, image_context_features)
             else:
-                video_features = self.cmaf(video_face_features, video_body_features)
+                fused_frame_features = self.cmaf(image_face_features, image_body_features)
             
-        if self.use_motion:
-            video_features = torch.cat((video_features, video_motion_features), dim=-1)
+        # Unified Temporal Transformer
+        fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
+        video_features = self.unified_temporal_net(fused_frame_features)
 
         video_features = self.project_fc(video_features)
         # Robust normalization to avoid NaN on MPS
