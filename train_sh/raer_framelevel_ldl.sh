@@ -64,7 +64,8 @@ python main.py \
   --image-size 224 \
   --temperature 0.07 \
   --crop-body \
-  --drop-path-rate 0.1
+  --drop-path-rate 0.1 \
+  --use-amp
 
 # ============================================================================
 # HOW TO RESUME TRAINING:
