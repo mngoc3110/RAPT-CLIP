@@ -34,14 +34,15 @@ python main.py \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \
-  --lr-prompt-learner 3e-4 \
-  --lr-adapter 1e-4 \
-  --weight-decay 0.005 \
+  --lr-prompt-learner 5e-5 \
+  --lr-adapter 5e-5 \
+  --weight-decay 0.01 \
   --scheduler cosine \
   \
   --loss-type ldl \
   --use-ldl \
   --ldl-temperature 1.0 \
+  --ldl-target-temperature 0.01 \
   --ldl-warmup 0 \
   --mixup-alpha 0.0 \
   --lambda_mi 0.1 \
@@ -63,8 +64,7 @@ python main.py \
   --image-size 224 \
   --temperature 0.07 \
   --crop-body \
-  --drop-path-rate 0.1 \
-  --use-amp
+  --drop-path-rate 0.1
 
 # ============================================================================
 # HOW TO RESUME TRAINING:
