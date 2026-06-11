@@ -19,7 +19,7 @@ python main.py \
   --dataset RAER \
   --gpu 0 \
   --epochs 20 \
-  --batch-size 4 \
+  --batch-size 2 \
   --print-freq 50 \
   --seed 42 \
   --workers 2 \
