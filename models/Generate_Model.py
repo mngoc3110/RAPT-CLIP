@@ -304,9 +304,13 @@ class GenerateModel(nn.Module):
             logits = torch.einsum('bd,cpd->bcp', video_features, text_features)
             
             # Average the logits across the prompts for each class
-            output = torch.mean(logits, dim=2) / self.args.temperature
-
+            output = torch.mean(logits, dim=2)
+            
         else:
-            output = video_features @ text_features.t() / self.args.temperature
+            output = video_features @ text_features.t()
+
+        # Avoid double-scaling trap: LDAM loss handles scaling via `s` parameter internally
+        if getattr(self.args, 'loss_type', '') != 'ldam':
+            output = output / self.args.temperature
 
         return output, text_features, hand_crafted_text_features, moco_logits

@@ -82,6 +82,7 @@ optim_group.add_argument('--lr-prompt-learner', type=float, default=2e-4, help='
 optim_group.add_argument('--lr-adapter', type=float, default=1e-4, help='Learning rate for the adapter.')
 optim_group.add_argument('--weight-decay', type=float, default=0.005, help='Weight decay for the optimizer.')
 optim_group.add_argument('--momentum', type=float, default=0.9, help='Momentum for the SGD optimizer.')
+optim_group.add_argument('--scheduler', type=str, default='cosine', choices=['multistep', 'cosine'], help='Learning rate scheduler type')
 optim_group.add_argument('--milestones', nargs='+', type=int, default=[10, 15], help='Epochs at which to decay the learning rate.')
 optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for learning rate decay.')
 
@@ -327,7 +328,10 @@ def run_training(args: argparse.Namespace) -> None:
         if 'initial_lr' not in group:
             group['initial_lr'] = group['lr']
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma, last_epoch=start_epoch - 1)
+    if args.scheduler == 'multistep':
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma, last_epoch=start_epoch - 1)
+    elif args.scheduler == 'cosine':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-7, last_epoch=start_epoch - 1)
 
     if args.resume and os.path.isfile(args.resume):
         if 'scheduler' in checkpoint:
