@@ -99,7 +99,8 @@ loss_group.add_argument('--dc-ramp', type=int, default=10, help='Ramp-up epochs 
 loss_group.add_argument('--use-weighted-sampler', action='store_true', help='Use WeightedRandomSampler.')
 loss_group.add_argument('--label-smoothing', type=float, default=0.05, help='Label smoothing factor.')
 loss_group.add_argument('--use-ldl', action='store_true', help='Use Semantic Label Distribution Learning (LDL) Loss.')
-loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temperature for LDL target distribution.')
+loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temperature for model logits in LDL.')
+loss_group.add_argument('--ldl-target-temperature', type=float, default=0.01, help='Temperature for target distribution in LDL (lower = sharper).')
 loss_group.add_argument('--ldl-warmup', type=int, default=5, help='Warmup epochs for LDL loss (during warmup, use CE).')
 loss_group.add_argument('--mixup-alpha', type=float, default=0.0, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable. NOTE: Mixup is incompatible with LDAM (hard-label margin), keep 0.0 when using loss-type=ldam.')
 # NEW LDAM ARGS
@@ -237,9 +238,9 @@ def run_training(args: argparse.Namespace) -> None:
     print(f"=> Class distribution (Training): {cls_num_list}")
 
     # Loss and optimizer
-    if args.use_ldl:
-        print(f"=> Using SemanticLDLLoss (LDL) with temperature {args.ldl_temperature}")
-        criterion = SemanticLDLLoss(temperature=args.ldl_temperature).to(args.device)
+    if args.loss_type == 'ldl' or getattr(args, 'use_ldl', False):
+        print(f"=> Using SemanticLDLLoss (LDL) with temp {args.ldl_temperature} and target_temp {args.ldl_target_temperature}")
+        criterion = SemanticLDLLoss(temperature=args.ldl_temperature, target_temperature=args.ldl_target_temperature).to(args.device)
     elif args.loss_type == 'ldam':
         if sum(cls_num_list) > 0:
             print(f"=> Using LDAM Loss with s={args.ldam_s}, max_m={args.ldam_max_m}")

@@ -42,6 +42,7 @@ python main.py \
   --loss-type ldl \
   --use-ldl \
   --ldl-temperature 1.0 \
+  --ldl-target-temperature 0.01 \
   --ldl-warmup 0 \
   --mixup-alpha 0.0 \
   --lambda_mi 0.1 \
