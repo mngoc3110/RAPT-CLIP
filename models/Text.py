@@ -302,51 +302,111 @@ class_names_with_context_caer = [
 ]
 
 class_descriptor_caer = [
-    "A person with an angry expression, furrowed brows and tightened lips.",
-    "A person with a disgusted expression, nose wrinkled and upper lip raised.",
-    "A person with a fearful expression, eyes wide open and eyebrows raised.",
-    "A person with a happy expression, smiling with cheeks raised.",
-    "A person with a neutral expression, relaxed face and calm gaze.",
-    "A person with a sad expression, corners of the lips turned down and drooping eyelids.",
-    "A person with a surprised expression, mouth open and eyes widened."
+    "A person displaying intense anger, with deeply furrowed brows, a hardened glare, flared nostrils, and tightly compressed lips or an open mouth shouting, often in a tense or confrontational scene.",
+    "A person showing strong disgust, characterized by a severely wrinkled nose, raised upper lip, squinted eyes, and a repulsed posture, reacting to an unpleasant context.",
+    "A person exhibiting genuine fear, with wide-open eyes showing the sclera, raised and drawn-together eyebrows, and a tense, slightly open mouth, often in an alarming or threatening scene.",
+    "A person experiencing pure happiness, featuring a bright, genuine smile (Duchenne smile) with raised cheeks, crinkled eyes, and relaxed posture, often in a joyful or celebratory context.",
+    "A person with a completely neutral demeanor, showing relaxed facial muscles, a calm and steady gaze, and no distinct emotional micro-expressions, set in an ordinary everyday scene.",
+    "A person expressing deep sadness, with the inner corners of the eyebrows raised, drooping upper eyelids, and the corners of the lips pulled downward, often in a somber or isolated environment.",
+    "A person captured in a moment of sudden surprise, with eyes wide open, eyebrows raised high and curved, and the jaw dropped open in astonishment, reacting to an unexpected event."
 ]
 
 prompt_ensemble_caer = [
     [ # Anger
-        "A photo of a person showing anger.",
-        "A face with furrowed brows and a glare.",
-        "An angry facial expression."
+        "A photo of a person showing intense anger in their environment.",
+        "A face with furrowed brows, a glare, and tight lips indicating rage.",
+        "A deeply angry and hostile facial expression in context.",
+        "A person visibly furious, with tense muscles and a scowling face.",
+        "An expression of extreme frustration and anger."
     ],
     [ # Disgust
-        "A photo of a person showing disgust.",
-        "A face with a wrinkled nose.",
-        "A disgusted facial expression."
+        "A photo of a person showing strong disgust towards their surroundings.",
+        "A face with a severely wrinkled nose and raised upper lip.",
+        "A disgusted and repulsed facial expression.",
+        "A person looking nauseated or offended by something in the scene.",
+        "An expression of intense aversion and disgust."
     ],
     [ # Fear
-        "A photo of a person showing fear.",
-        "A face with wide eyes and a terrified look.",
-        "A fearful facial expression."
+        "A photo of a person showing genuine fear in a threatening context.",
+        "A face with wide, terrified eyes and raised eyebrows.",
+        "A fearful, scared, and alarmed facial expression.",
+        "A person looking extremely frightened and anxious.",
+        "An expression of pure terror and panic."
     ],
     [ # Happy
-        "A photo of a person showing happiness.",
-        "A smiling face with joy.",
-        "A happy facial expression."
+        "A photo of a person showing pure happiness and joy.",
+        "A brightly smiling face with raised cheeks and crinkled eyes.",
+        "A delighted and joyful facial expression in a positive scene.",
+        "A person laughing or grinning broadly with genuine happiness.",
+        "An expression of warmth, cheerfulness, and delight."
     ],
     [ # Neutral
-        "A photo of a person showing a neutral expression.",
-        "A calm face with no strong emotion.",
-        "A neutral facial expression."
+        "A photo of a person showing a completely neutral and calm expression.",
+        "A relaxed face with no strong emotion or tension.",
+        "A neutral, indifferent, and steady facial expression.",
+        "A person looking perfectly calm in an ordinary everyday scene.",
+        "An expression devoid of any specific emotional reaction."
     ],
     [ # Sad
-        "A photo of a person showing sadness.",
-        "A face with a frown and sorrowful eyes.",
-        "A sad facial expression."
+        "A photo of a person showing deep sadness and sorrow.",
+        "A face with a frown, drooping eyelids, and downturned lips.",
+        "A sad, depressed, and melancholic facial expression.",
+        "A person looking heartbroken or grieving in a somber context.",
+        "An expression of misery, crying, or silent sorrow."
     ],
     [ # Surprise
-        "A photo of a person showing surprise.",
-        "A face with an open mouth and wide eyes.",
-        "A surprised facial expression."
+        "A photo of a person showing sudden surprise or astonishment.",
+        "A face with an open mouth, dropped jaw, and wide eyes.",
+        "A surprised, shocked, and amazed facial expression.",
+        "A person reacting to something unexpected in the scene.",
+        "An expression of disbelief and sudden realization."
     ]
+]
+
+
+# EMOTIC Classes (26 classes)
+class_names_emotic = [
+    'Affection', 'Anger', 'Annoyance', 'Anticipation', 'Aversion', 'Confidence', 
+    'Disapproval', 'Disconnection', 'Disquietment', 'Doubt/Confusion', 'Embarrassment', 
+    'Engagement', 'Esteem', 'Excitement', 'Fatigue', 'Fear', 'Happiness', 'Pain', 
+    'Peace', 'Pleasure', 'Sadness', 'Sensitivity', 'Suffering', 'Surprise', 
+    'Sympathy', 'Yearning'
+]
+
+class_names_with_context_emotic = [f"A person shows {c.lower()}." for c in class_names_emotic]
+
+class_descriptor_emotic = [
+    "A person feeling fond and loving.",
+    "A person displaying intense anger and rage.",
+    "A person looking bothered and irritated.",
+    "A person expecting or waiting for something.",
+    "A person feeling disgust or strong dislike.",
+    "A person looking self-assured and confident.",
+    "A person expressing objection or disapproval.",
+    "A person looking isolated or disconnected from the surroundings.",
+    "A person feeling restless, uneasy, or anxious.",
+    "A person looking confused, uncertain, or doubtful.",
+    "A person feeling self-conscious or embarrassed.",
+    "A person highly focused and engaged in an activity.",
+    "A person feeling respected or showing self-esteem.",
+    "A person feeling enthusiastic and excited.",
+    "A person looking exhausted, tired, or fatigued.",
+    "A person showing genuine fear or panic.",
+    "A person experiencing joy and happiness.",
+    "A person experiencing physical or emotional pain.",
+    "A person feeling calm, relaxed, and at peace.",
+    "A person experiencing enjoyment and pleasure.",
+    "A person expressing sorrow and sadness.",
+    "A person looking sensitive or emotionally vulnerable.",
+    "A person experiencing hardship or suffering.",
+    "A person looking astonished or surprised.",
+    "A person feeling compassion and sympathy.",
+    "A person showing strong desire or yearning."
+]
+
+prompt_ensemble_emotic = [
+    [f"A photo of a person showing {c.lower()}.", f"A person feeling {c.lower()}.", f"An expression of {c.lower()}."]
+    for c in class_names_emotic
 ]
 
 

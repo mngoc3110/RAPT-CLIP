@@ -148,7 +148,14 @@ class VideoDataset(data.Dataset):
         # 
         # Data Form: [video_id, num_frames, class_idx]
         # 
-        self.video_list = [VideoRecord([os.path.join(self.root_dir, item[0])] + item[1:]) for item in self.sample_list]
+        self.video_list = []
+        for item in self.sample_list:
+            path = item[0]
+            # Fix Kaggle dataset structure (Kaggle unzips directories to root)
+            if path.startswith('CAER/'):
+                path = path.replace('CAER/', '', 1)
+            
+            self.video_list.append(VideoRecord([os.path.join(self.root_dir, path)] + item[1:]))
         print(('video number:%d' % (len(self.video_list))))
 
     def _get_train_indices(self, record):

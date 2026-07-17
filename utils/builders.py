@@ -96,6 +96,12 @@ def get_class_info(args: argparse.Namespace) -> Tuple[list, list]:
         class_names_with_context = class_names_with_context_caer
         class_descriptor = class_descriptor_caer
         ensemble_prompts = prompt_ensemble_caer
+    elif dataset_name == "EMOTIC":
+        from models.Text import class_names_emotic, class_names_with_context_emotic, class_descriptor_emotic, prompt_ensemble_emotic
+        class_names = class_names_emotic
+        class_names_with_context = class_names_with_context_emotic
+        class_descriptor = class_descriptor_emotic
+        ensemble_prompts = prompt_ensemble_emotic
     else:
         raise NotImplementedError(f"Dataset '{dataset_name}' is not implemented yet.")
 
