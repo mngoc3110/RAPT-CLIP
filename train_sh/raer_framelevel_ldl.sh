@@ -1,11 +1,10 @@
 #!/bin/bash
 # ============================================================================
-# RAER Training Script — Frame-Level Fusion + Semantic LDL + Cosine Scheduler
+# RAER Training Script — Frame-Level Fusion (CMAF) + LDAM Loss
 # ============================================================================
 #
-# This script uses the new optimized Semantic LDL (Label Distribution Learning)
-# to solve the "Double-Scaling Loss Trap" from LDAM and handles ambiguous 
-# expressions perfectly.
+# This script reproduces the best experiment: RAER-FrameLevelFusion-[06-07]-[03:06]
+# Best Valid UAR: 77.06% (Epoch 12)
 # ============================================================================
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -13,7 +12,7 @@ export CUDA_VISIBLE_DEVICES=0
 
 python main.py \
   --mode train \
-  --exper-name RAER-FrameLevel-LDL \
+  --exper-name RAER-FrameLevelFusion \
   --fusion-type cmaf \
   --use-context \
   --dataset RAER \
@@ -34,25 +33,28 @@ python main.py \
   --optimizer AdamW \
   --lr 2e-5 \
   --lr-image-encoder 1e-6 \
-  --lr-prompt-learner 5e-5 \
-  --lr-adapter 5e-5 \
-  --weight-decay 0.01 \
-  --scheduler cosine \
+  --lr-prompt-learner 3e-4 \
+  --lr-adapter 1e-4 \
+  --weight-decay 0.005 \
+  --momentum 0.9 \
+  --milestones 10 15 \
+  --gamma 0.1 \
+  --grad-clip 1.0 \
+  --use-amp \
   \
-  --loss-type ldl \
-  --use-ldl \
-  --ldl-temperature 1.0 \
-  --ldl-target-temperature 0.01 \
-  --ldl-warmup 0 \
-  --mixup-alpha 0.0 \
+  --loss-type ldam \
+  --ldam-max-m 0.5 \
+  --ldam-s 30.0 \
+  --label-smoothing 0.05 \
   --lambda_mi 0.1 \
   --lambda_dc 0.1 \
   --mi-warmup 5 \
   --mi-ramp 10 \
+  --mi-ramp-type ramp_up \
   --dc-warmup 5 \
   --dc-ramp 10 \
   --use-weighted-sampler \
-  --grad-clip 1.0 \
+  --mixup-alpha 0.0 \
   \
   --text-type prompt_ensemble \
   --contexts-number 8 \
@@ -65,11 +67,11 @@ python main.py \
   --temperature 0.07 \
   --crop-body \
   --drop-path-rate 0.1 \
-  --use-amp
+  --modality-dropout 0.3 \
+  "$@"
 
 # ============================================================================
 # HOW TO RESUME TRAINING:
-# To resume training from a checkpoint (e.g. model.pth), add a backslash '\'
-# to the line above and append the resume flag:
-#   --resume /path/to/checkpoint/model.pth
+#   !bash train_sh/raer_framelevel_ldl.sh \
+#     --resume /kaggle/input/models/bearmn/rapt-clip-framelevelfusion/tensorflow2/default/1/model_best.pth
 # ============================================================================
