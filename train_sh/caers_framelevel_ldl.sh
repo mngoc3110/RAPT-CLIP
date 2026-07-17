@@ -29,7 +29,7 @@ python main.py \
     --bounding-box-face /kaggle/input/caer-dataset/face_bboxes.json \
     --bounding-box-body /kaggle/input/caer-dataset/body_bboxes.json \
     --epochs 30 \
-    --batch-size 32 \
+    --batch-size 8 \
     --print-freq 50 \
     --use-amp \
     --grad-clip 1.0 \
@@ -50,8 +50,8 @@ python main.py \
     --label-smoothing 0.05 \
     --use-weighted-sampler \
     --text-type prompt_ensemble \
-    --num-segments 1 \
-    --temporal-layers 1 \
+    --num-segments 8 \
+    --temporal-layers 3 \
     --fusion-type cmaf \
     --use-context \
     --modality-dropout 0.3 \
