@@ -7,6 +7,8 @@ from models.CrossModalAttentionFusion import CrossModalAttentionFusion
 from models.clip import clip
 import copy
 import itertools
+import numpy as np
+import torch
 import torch.nn.functional as F
 
 
@@ -236,7 +238,6 @@ class GenerateModel(nn.Module):
             cooccurrence_matrix: (num_classes, num_classes) numpy or tensor
         """
         if isinstance(cooccurrence_matrix, np.ndarray):
-            import numpy as np
             cooccurrence_matrix = torch.from_numpy(cooccurrence_matrix).float()
         self.label_cooccurrence.copy_(cooccurrence_matrix)
         print(f"=> Set label co-occurrence matrix: {cooccurrence_matrix.shape}")
