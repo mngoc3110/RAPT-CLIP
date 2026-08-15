@@ -32,11 +32,19 @@ class VideoRecord(object):
 
     @property       # 帧数
     def num_frames(self):
-        return int(self._data[1])
+        if len(self._data) >= 3:
+            return int(self._data[1])
+        return 1
 
     @property       # 标签
     def label(self):
-        return int(self._data[2])
+        # Support EMOTIC multi-label (comma separated string -> float tensor)
+        raw_label = self._data[-1]
+        if isinstance(raw_label, torch.Tensor):
+            return raw_label
+        if isinstance(raw_label, str) and ',' in raw_label:
+            return torch.tensor([float(x) for x in raw_label.split(',')], dtype=torch.float32)
+        return int(raw_label)
 
 class VideoDataset(data.Dataset):
     def __init__(self, list_file, num_segments, duration, mode, transform, image_size,bounding_box_face,bounding_box_body, crop_body=False, root_dir="", num_classes=8):
@@ -113,10 +121,25 @@ class VideoDataset(data.Dataset):
             upper = int(upper)
             right = int(right)
             lower = int(lower)
+            
+            # Swap coordinates if they are inverted
+            if left > right:
+                left, right = right, left
+            if upper > lower:
+                upper, lower = lower, upper
+                
+            # Fallback to full image if the bounding box is degenerate or extremely small
+            if right - left < 2 or lower - upper < 2:
+                return img
+                
             left = max(0, left - margin)
             upper = max(0, upper - margin)
             right = min(img.width, right + margin)
             lower = min(img.height, lower + margin)
+            
+            # Final safety check before cropping
+            if right <= left: right = left + 1
+            if lower <= upper: lower = upper + 1
             if mode == 'face':
                 img = img.crop((left, upper, right, lower))
                 return img
@@ -133,15 +156,24 @@ class VideoDataset(data.Dataset):
         self.sample_list = []
         with open(self.list_file, 'r') as f:
             for line in f:
-                parts = line.strip().split(' ')
-                if len(parts) > 3:
-                    # Path contains spaces, join all parts except the last two
-                    path = ' '.join(parts[:-2])
-                    num_frames = parts[-2]
-                    label = parts[-1]
+                if ',' in line:
+                    parts = line.strip().split(' ')
+                    # label is the first part that contains a comma
+                    label_idx = next(i for i, part in enumerate(parts) if ',' in part)
+                    path = ' '.join(parts[:label_idx])
+                    label = parts[label_idx]
+                    num_frames = 1
                     self.sample_list.append([path, num_frames, label])
                 else:
-                    self.sample_list.append(parts)
+                    parts = line.strip().split(' ')
+                    if len(parts) > 3:
+                        # Path contains spaces, join all parts except the last two
+                        path = ' '.join(parts[:-2])
+                        num_frames = parts[-2]
+                        label = parts[-1]
+                        self.sample_list.append([path, num_frames, label])
+                    else:
+                        self.sample_list.append(parts)
 
 
     def _parse_list(self):
@@ -149,13 +181,34 @@ class VideoDataset(data.Dataset):
         # Data Form: [video_id, num_frames, class_idx]
         # 
         self.video_list = []
+        
+        # Auto-detect label offset (0-based vs 1-based)
+        min_label = 0
+        try:
+            scalar_labels = [int(item[-1]) for item in self.sample_list if not (isinstance(item[-1], str) and ',' in item[-1])]
+            if len(scalar_labels) > 0:
+                min_label = min(scalar_labels)
+        except:
+            pass
+        self.label_offset = min_label # Subtract this offset to make it 0-based
+
         for item in self.sample_list:
             path = item[0]
             # Fix Kaggle dataset structure (Kaggle unzips directories to root)
             if path.startswith('CAER/'):
                 path = path.replace('CAER/', '', 1)
+            if 'kaggle' in self.root_dir.lower():
+                path = path.replace('CAER_Video/', '')
+                path = path.replace('dataset/RAER/', 'RAER/')
             
-            self.video_list.append(VideoRecord([os.path.join(self.root_dir, path)] + item[1:]))
+            if len(item) == 2:
+                num_frames = 1
+                label = item[1]
+            elif len(item) >= 3:
+                num_frames = int(item[-2])
+                label = item[-1]
+                
+            self.video_list.append(VideoRecord([os.path.join(self.root_dir, path), num_frames, label]))
         print(('video number:%d' % (len(self.video_list))))
 
     def _get_train_indices(self, record):
@@ -197,6 +250,10 @@ class VideoDataset(data.Dataset):
             video_frames_path.sort()
             num_real_frames = len(video_frames_path)
             is_video_file = False
+        elif record.path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
+            video_frames_path = [record.path]
+            num_real_frames = 1
+            is_video_file = False
         else:
             # Assume it's a video file
             is_video_file = True
@@ -211,7 +268,9 @@ class VideoDataset(data.Dataset):
             print(f"Warning: No frames found for video {record.path}, returning zeros.")
             dummy_shape = (self.num_segments * self.duration, 3, self.image_size, self.image_size)
             if is_video_file and 'cap' in locals(): cap.release()
-            return torch.zeros(dummy_shape), torch.zeros(dummy_shape), torch.zeros(dummy_shape), record.label - 1
+            
+            label_out = record.label if isinstance(record.label, torch.Tensor) else record.label - self.label_offset
+            return torch.zeros(dummy_shape), torch.zeros(dummy_shape), torch.zeros(dummy_shape), label_out
 
         # Clamp indices to be valid
         indices = np.clip(indices, 0, num_real_frames - 1)
@@ -358,14 +417,15 @@ class VideoDataset(data.Dataset):
         process_data_face = process_data_face.view(-1, 3, self.image_size, self.image_size)
         process_data_context = process_data_context.view(-1, 3, self.image_size, self.image_size)
         
-        return process_data_face, process_data, process_data_context, record.label - 1
+        label_out = record.label if isinstance(record.label, torch.Tensor) else record.label - self.label_offset
+        return process_data_face, process_data, process_data_context, label_out
 
     def __len__(self):
         return len(self.video_list)
 
 
 def train_data_loader(root_dir, list_file, num_segments, duration, image_size,dataset_name,bounding_box_face,bounding_box_body, crop_body=False, num_classes=8):
-    if dataset_name == "RAER" or dataset_name == "CAER":
+    if dataset_name in ["RAER", "CAER", "EMOTIC"]:
          train_transforms = torchvision.transforms.Compose([
             # Apply ColorJitter from video_transform (works on list of images)
             ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.2), 

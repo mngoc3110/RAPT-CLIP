@@ -2,7 +2,7 @@
 import logging
 import torch
 import numpy as np
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, average_precision_score
 from tqdm import tqdm
 import os
 import torchvision
@@ -129,6 +129,9 @@ class Trainer:
         all_preds_list = []
         all_targets_list = []
         
+        running_uar = 0.0
+        running_map = 0.0
+        
         saved_images_count = 0
 
         # Print weights at the start of training epoch
@@ -187,7 +190,13 @@ class Trainer:
                     num_classes_expected = self.model.num_classes
                 elif hasattr(self.model, 'args') and hasattr(self.model.args, 'num_classes'):
                     num_classes_expected = self.model.args.num_classes
-                if num_classes_expected is not None:
+                # Ensure target is float for BCE/ASL, long for CE/LDL
+                if hasattr(self.criterion, 'gamma_neg') or isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
+                    target = target.float()
+                else:
+                    target = target.long()
+
+                if num_classes_expected is not None and target.dtype == torch.long:
                     invalid_mask = (target < 0) | (target >= num_classes_expected)
                     if invalid_mask.any():
                         bad_vals = target[invalid_mask].cpu().tolist()
@@ -195,9 +204,12 @@ class Trainer:
                         print(f"  -> Clamping to valid range to avoid CUDA crash. CHECK YOUR DATALOADER LABELS!")
                         target = target.clamp(0, num_classes_expected - 1)
                 
-                # Apply Mixup
-                if is_train and self.mixup_alpha > 0:
-                    images_face, images_body, target_b, lam = self.mixup_data(images_face, images_body, self.mixup_alpha)
+                # Apply Mixup (Skip for multi-label / float targets)
+                if is_train and self.mixup_alpha > 0 and target.dtype == torch.long:
+                    images_face, images_body, index, lam = self.mixup_data(images_face, images_body, self.mixup_alpha)
+                    target_b = target[index]
+                else:
+                    self.mixup_alpha = 0  # Temporarily disable mixup for this batch if float target
 
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     # Forward pass
@@ -298,18 +310,24 @@ class Trainer:
                     self.ema.update(self.model)
 
                 # Record metrics
-                preds = output.argmax(dim=1)
-                correct_preds = preds.eq(target).sum().item()
-                acc = (correct_preds / target.size(0)) * 100.0
+                is_multilabel = target.dtype == torch.float32
+                if is_multilabel:
+                    preds = torch.sigmoid(output)
+                    # For multi-label, we don't have a single correct class
+                    acc = 0.0
+                else:
+                    preds = output.argmax(dim=1)
+                    correct_preds = preds.eq(target).sum().item()
+                    acc = (correct_preds / target.size(0)) * 100.0
 
                 losses.update(loss.item(), target.size(0))
                 war_meter.update(acc, target.size(0))
 
-                # Collect preds for UAR
-                all_preds_list.append(preds.cpu())
-                all_targets_list.append(target.cpu())
+                # Collect preds for UAR/mAP
+                all_preds_list.append(preds.cpu().detach())
+                all_targets_list.append(target.cpu().detach())
 
-                if not is_train and saved_images_count < 32:
+                if not is_train and not is_multilabel and saved_images_count < 32:
                     for img_idx in range(images_face.size(0)):
                         if saved_images_count < 32:
                             self._save_debug_image(
@@ -324,42 +342,57 @@ class Trainer:
                         else:
                             break
                 
-                # Update progress bar with Running UAR
-                running_uar = 0.0
+                # Update progress bar
                 if len(all_preds_list) > 0:
                     curr_preds = torch.cat(all_preds_list).numpy()
                     curr_targets = torch.cat(all_targets_list).numpy()
-                    # Only calc UAR every 10 batches to save CPU time
+                    # Only calc metrics every 10 batches to save CPU time
                     if i % 10 == 0: 
                         try:
-                            cm = confusion_matrix(curr_targets, curr_preds, labels=range(output.shape[1]))
-                            class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
-                            running_uar = np.nanmean(class_acc) * 100
+                            if is_multilabel:
+                                running_map = average_precision_score(curr_targets, curr_preds, average='macro') * 100
+                            else:
+                                cm = confusion_matrix(curr_targets, curr_preds, labels=range(output.shape[1]))
+                                class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
+                                running_uar = np.nanmean(class_acc) * 100
                         except:
                             pass
                 
-                pbar.set_postfix({
-                    'Loss': f"{losses.avg:.4f}",
-                    'WAR': f"{war_meter.avg:.2f}%",
-                    'UAR': f"{running_uar:.2f}%"
-                })
+                if is_multilabel:
+                    pbar.set_postfix({
+                        'Loss': f"{losses.avg:.4f}",
+                        'mAP': f"{running_map:.2f}%"
+                    })
+                else:
+                    pbar.set_postfix({
+                        'Loss': f"{losses.avg:.4f}",
+                        'WAR': f"{war_meter.avg:.2f}%",
+                        'UAR': f"{running_uar:.2f}%"
+                    })
         
         # Calculate epoch-level metrics
         all_preds = torch.cat(all_preds_list)
         all_targets = torch.cat(all_targets_list)
         
-        cm = confusion_matrix(all_targets.numpy(), all_preds.numpy())
-        war = war_meter.avg 
-        
-        class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
-        uar = np.nanmean(class_acc) * 100
-
         prefix = f"{mode_str} Epoch: [{epoch_str}]"
-        logging.info(f"{prefix} * WAR: {war:.3f} | UAR: {uar:.3f}")
-        with open(self.log_txt_path, 'a') as f:
-            f.write('Current WAR: {war:.3f}'.format(war=war) + '\n')
-            f.write('Current UAR: {uar:.3f}'.format(uar=uar) + '\n')
-        return war, uar, losses.avg, cm
+        if all_targets.dtype == torch.float32: # Multi-label
+            map_score = average_precision_score(all_targets.numpy(), all_preds.numpy(), average='macro') * 100
+            logging.info(f"{prefix} * mAP: {map_score:.3f}")
+            with open(self.log_txt_path, 'a') as f:
+                f.write('Current mAP: {map_score:.3f}'.format(map_score=map_score) + '\n')
+            return map_score, map_score, losses.avg, None
+        else: # Single-label
+            cm = confusion_matrix(all_targets.numpy(), all_preds.numpy())
+            war = war_meter.avg 
+            
+            class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
+            uar = np.nanmean(class_acc) * 100
+
+            logging.info(f"{prefix} * WAR: {war:.3f} | UAR: {uar:.3f}")
+            with open(self.log_txt_path, 'a') as f:
+                f.write('Current WAR: {war:.3f}'.format(war=war) + '\n')
+                f.write('Current UAR: {uar:.3f}'.format(uar=uar) + '\n')
+            return war, uar, losses.avg, cm
         
     def train_epoch(self, train_loader, epoch_num):
         """Executes one full training epoch."""

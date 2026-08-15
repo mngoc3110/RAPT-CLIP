@@ -19,6 +19,7 @@ export CUDA_VISIBLE_DEVICES=0
 python main.py \
     --mode train \
     --dataset EMOTIC \
+    --gpu 0 \
     --exper-name EMOTIC-FrameLevelFusion \
     --root-dir /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/cvpr_emotic \
     --train-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/train.txt \
