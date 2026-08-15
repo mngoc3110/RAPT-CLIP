@@ -88,7 +88,7 @@ optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for le
 
 # --- Loss & Imbalance Handling ---
 loss_group = parser.add_argument_group('Loss & Imbalance Handling', 'Parameters for loss functions and imbalance handling')
-loss_group.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'ldl', 'ldam'], help='Type of primary classification loss (ce, ldl, ldam).')
+loss_group.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'ldl', 'ldam', 'bce', 'asl', 'masked_asl'], help='Type of primary classification loss (ce, ldl, ldam, bce, asl, masked_asl).')
 loss_group.add_argument('--lambda_mi', type=float, default=0.1, help='Weight for the Mutual Information loss.')
 loss_group.add_argument('--lambda_dc', type=float, default=0.1, help='Weight for the Decorrelation loss.')
 loss_group.add_argument('--mi-warmup', type=int, default=5, help='Warmup epochs for MI loss.')
@@ -103,6 +103,7 @@ loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temp
 loss_group.add_argument('--ldl-target-temperature', type=float, default=0.01, help='Temperature for target distribution in LDL (lower = sharper).')
 loss_group.add_argument('--ldl-warmup', type=int, default=5, help='Warmup epochs for LDL loss (during warmup, use CE).')
 loss_group.add_argument('--mixup-alpha', type=float, default=0.0, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable. NOTE: Mixup is incompatible with LDAM (hard-label margin), keep 0.0 when using loss-type=ldam.')
+loss_group.add_argument('--mask-ratio', type=float, default=0.3, help='Ratio of negative labels to randomly mask in Masked ASL loss.')
 # NEW LDAM ARGS
 loss_group.add_argument('--ldam-max-m', type=float, default=0.5, help='Max margin for LDAM Loss.')
 loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling factor for LDAM Loss. s=30 works well with CLIP cosine-sim outputs (proven: 73.76%% UAR on RAER). Lower values (e.g. s=3) produce weak gradients.')
@@ -222,12 +223,17 @@ def run_training(args: argparse.Namespace) -> None:
     if hasattr(train_loader.dataset, 'video_list'):
         print(f"=> Calculating class distribution from video_list...")
         for record in train_loader.dataset.video_list:
-            # Labels in RAER/CAER annotations are typically 1-based (e.g., 1..8)
-            # VideoDataset.__getitem__ returns label-1.
-            # So we map record.label (1-based) to 0-based index.
-            label_idx = record.label - 1
-            if 0 <= label_idx < len(cls_num_list):
-                cls_num_list[label_idx] += 1
+            if isinstance(record.label, torch.Tensor):
+                # For EMOTIC (multi-label), sum the multi-hot vectors
+                if isinstance(cls_num_list, list):
+                    cls_num_list = np.zeros(len(class_names))
+                cls_num_list += record.label.numpy()
+            else:
+                label_idx = record.label - getattr(train_loader.dataset, 'label_offset', 1)
+                if 0 <= label_idx < len(cls_num_list):
+                    cls_num_list[label_idx] += 1
+        if isinstance(cls_num_list, np.ndarray):
+            cls_num_list = cls_num_list.tolist()
     else:
         # Fallback or warning if dataset structure is different
         print("=> Warning: Could not calculate class distribution directly from dataset. Using uniform distribution placeholder if needed.")
@@ -248,6 +254,17 @@ def run_training(args: argparse.Namespace) -> None:
         else:
             print("=> Error: cls_num_list is empty/zero. Cannot use LDAM. Falling back to CrossEntropy.")
             criterion = nn.CrossEntropyLoss().to(args.device)
+    elif args.loss_type == 'bce':
+        print("=> Using BCEWithLogitsLoss (Multi-label)")
+        criterion = nn.BCEWithLogitsLoss().to(args.device)
+    elif args.loss_type == 'asl':
+        print("=> Using AsymmetricLoss (Multi-label)")
+        from utils.loss import AsymmetricLoss
+        criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, disable_torch_grad_focal_loss=True).to(args.device)
+    elif args.loss_type == 'masked_asl':
+        print(f"=> Using MaskedAsymmetricLoss (Multi-label, mask_ratio={args.mask_ratio})")
+        from utils.loss import MaskedAsymmetricLoss
+        criterion = MaskedAsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, mask_ratio=args.mask_ratio).to(args.device)
     elif args.label_smoothing > 0:
         criterion = LSR2(e=args.label_smoothing, label_mode='class_descriptor').to(args.device)
     else:
@@ -293,6 +310,10 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
+            # Q2L Multi-Label Head (EMOTIC)
+            if hasattr(model, 'q2l_head'):
+                optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
+                print("=> Added Q2L head parameters to optimizer")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -342,6 +363,23 @@ def run_training(args: argparse.Namespace) -> None:
             except Exception as e:
                 print(f"=> Warning: Could not resume scheduler state dict: {e}")
 
+    # ===== Compute and set label co-occurrence matrix for EMOTIC =====
+    is_multilabel = (args.dataset == "EMOTIC")
+    if is_multilabel and hasattr(train_loader.dataset, 'video_list'):
+        print("=> Computing label co-occurrence matrix from training data...")
+        all_labels = []
+        for record in train_loader.dataset.video_list:
+            if isinstance(record.label, torch.Tensor):
+                all_labels.append(record.label.numpy())
+        if all_labels:
+            all_labels_np = np.stack(all_labels)  # (N, 26)
+            cooccur_matrix = all_labels_np.T @ all_labels_np  # (26, 26)
+            # Normalize to conditional probability P(j|i)
+            row_sums = cooccur_matrix.diagonal().copy()
+            row_sums[row_sums == 0] = 1  # avoid division by zero
+            cooccur_matrix = cooccur_matrix / row_sums[:, None]
+            model.set_label_cooccurrence(torch.from_numpy(cooccur_matrix).float())
+
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
@@ -370,7 +408,17 @@ def run_training(args: argparse.Namespace) -> None:
         val_war, val_uar, val_los, val_cm = trainer.validate(val_loader, str(epoch))
         trainer.scheduler.step()
 
-        # Save checkpoint
+        # Log modality weights for EMOTIC context gating
+        if is_multilabel and hasattr(model, 'cmaf') and hasattr(model.cmaf, 'get_modality_weights'):
+            mod_weights = model.cmaf.get_modality_weights()
+            if mod_weights is not None:
+                weight_msg = f"  Modality Weights [face, body, context]: [{mod_weights[0]:.3f}, {mod_weights[1]:.3f}, {mod_weights[2]:.3f}]"
+                print(weight_msg)
+                with open(log_txt_path, 'a') as f:
+                    f.write(weight_msg + '\n')
+
+        # Save checkpoint — use mAP for EMOTIC, UAR for single-label datasets
+        # For multi-label: train_war=mAP, train_uar=mAP, val_war=mAP, val_uar=mAP (returned by trainer)
         is_best = val_uar > best_val_uar
         best_val_uar = max(val_uar, best_val_uar)
         best_val_war = max(val_war, best_val_war)
@@ -407,17 +455,21 @@ def run_training(args: argparse.Namespace) -> None:
         recorder.update(epoch, train_los, train_war, train_uar, val_los, val_war, val_uar)
         recorder.plot_curve(log_curve_path)
         
+        metric_name = 'mAP' if is_multilabel else 'UAR'
         log_msg = (
                    f'\n'
                    f'--- Epoch {epoch} Summary ---\n'
-                   f'Train WAR: {train_war:.2f}% | Train UAR: {train_uar:.2f}%\n'
-                   f'Valid WAR: {val_war:.2f}% | Valid UAR: {val_uar:.2f}%\n'
-                   f'Best Valid UAR so far: {best_val_uar:.2f}%\n'
+                   f'Train WAR: {train_war:.2f}% | Train {metric_name}: {train_uar:.2f}%\n'
+                   f'Valid WAR: {val_war:.2f}% | Valid {metric_name}: {val_uar:.2f}%\n'
+                   f'Best Valid {metric_name} so far: {best_val_uar:.2f}%\n'
                    f'Time: {epoch_time:.2f}s\n'
+                   )
+        if not is_multilabel:
+            log_msg += (
                    f'Train Confusion Matrix:\n{train_cm}\n'
                    f'Validation Confusion Matrix:\n{val_cm}\n'
-                   f'--- End of Epoch {epoch} ---\n'
                    )
+        log_msg += f'--- End of Epoch {epoch} ---\n'
         print(log_msg)
         with open(log_txt_path, 'a') as f:
             f.write(log_msg + '\n\n')
@@ -425,15 +477,26 @@ def run_training(args: argparse.Namespace) -> None:
     # Final evaluation with best model (load slim checkpoint)
     print("=> Final evaluation on test set...")
     load_slim_checkpoint(model, best_checkpoint_path, device=args.device)
-    computer_uar_war(
-        val_loader=test_loader,
-        model=model,
-        device=args.device,
-        class_names=class_names,
-        log_confusion_matrix_path=log_confusion_matrix_path,
-        log_txt_path=log_txt_path,
-        title=f"Confusion Matrix on {args.dataset} Test Set"
-    )
+    if is_multilabel:
+        from utils.utils import compute_multilabel_metrics
+        compute_multilabel_metrics(
+            val_loader=test_loader,
+            model=model,
+            device=args.device,
+            class_names=class_names,
+            log_txt_path=log_txt_path,
+            title=f"Multi-Label Metrics on {args.dataset} Test Set"
+        )
+    else:
+        computer_uar_war(
+            val_loader=test_loader,
+            model=model,
+            device=args.device,
+            class_names=class_names,
+            log_confusion_matrix_path=log_confusion_matrix_path,
+            log_txt_path=log_txt_path,
+            title=f"Confusion Matrix on {args.dataset} Test Set"
+        )
 
 def run_eval(args: argparse.Namespace) -> None:
     print("=> Starting evaluation mode...")
@@ -446,7 +509,10 @@ def run_eval(args: argparse.Namespace) -> None:
     model = model.to(args.device)
 
     # Load pretrained weights (supports both slim and full checkpoints)
-    load_slim_checkpoint(model, args.eval_checkpoint, device=args.device)
+    if args.eval_checkpoint:
+        load_slim_checkpoint(model, args.eval_checkpoint, device=args.device)
+    else:
+        print("=> No eval checkpoint provided. Evaluating Zero-Shot (Pre-trained CLIP + Random Modules)!")
 
     # Load data
     _, _, test_loader = build_dataloaders(args)

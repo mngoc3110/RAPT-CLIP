@@ -7,11 +7,81 @@ from models.CrossModalAttentionFusion import CrossModalAttentionFusion
 from models.clip import clip
 import copy
 import itertools
+import torch.nn.functional as F
+
+
+class Q2LabelHead(nn.Module):
+    """
+    Query2Label (Q2L) Multi-Label Classification Head.
+    
+    Uses learnable label queries that attend to visual features via cross-attention.
+    Label queries are initialized from CLIP text features to leverage pretrained 
+    semantic knowledge about each emotion class.
+    
+    Reference: Q2L (CVPR 2021) — adapted for CLIP-based dual-stream architecture.
+    """
+    
+    def __init__(self, num_classes, dim=512, num_heads=8, num_layers=2, dropout=0.1):
+        super().__init__()
+        self.num_classes = num_classes
+        self.dim = dim
+        
+        # Learnable label queries — will be initialized from CLIP text features
+        self.label_query = nn.Parameter(torch.randn(num_classes, dim))
+        
+        # Cross-attention layers: label queries attend to visual features
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=dim,
+            nhead=num_heads,
+            dim_feedforward=dim * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True
+        )
+        self.label_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        
+        # Final classification: each label query → 1 logit
+        self.fc_out = nn.Linear(dim, 1)
+        
+        # Layer norm for visual features before attention
+        self.norm_vis = nn.LayerNorm(dim)
+        
+    def init_from_text_features(self, text_features):
+        """Initialize label queries from CLIP text features (26, 512)."""
+        with torch.no_grad():
+            self.label_query.data.copy_(text_features.float())
+        print(f"=> Q2L: Initialized {self.num_classes} label queries from CLIP text features")
+    
+    def forward(self, visual_features):
+        """
+        Args:
+            visual_features: (B, D) pooled visual features from temporal transformer
+        Returns:
+            logits: (B, num_classes) raw logits for sigmoid
+        """
+        B = visual_features.shape[0]
+        
+        # Prepare visual features as memory: (B, 1, D)
+        memory = self.norm_vis(visual_features).unsqueeze(1)  # (B, 1, D)
+        
+        # Expand label queries for batch: (B, num_classes, D)
+        queries = self.label_query.unsqueeze(0).expand(B, -1, -1)
+        
+        # Cross-attention: label queries attend to visual features
+        # tgt=queries, memory=visual_features
+        label_features = self.label_decoder(queries, memory)  # (B, num_classes, D)
+        
+        # Project each label feature to a single logit
+        logits = self.fc_out(label_features).squeeze(-1)  # (B, num_classes)
+        
+        return logits
+
 
 class GenerateModel(nn.Module):
     def __init__(self, input_text, clip_model, args):
         super().__init__()
         self.args = args
+        self.is_multilabel = (args.dataset == "EMOTIC")
         
         self.is_ensemble = any(isinstance(i, list) for i in input_text)
         
@@ -47,6 +117,9 @@ class GenerateModel(nn.Module):
         elif args.dataset == "DAiSEE":
             from models.Text import class_descriptor_daisee
             hand_crafted_prompts = class_descriptor_daisee
+        elif args.dataset == "EMOTIC":
+            # Use the first prompt of each class as the hand_crafted prompt for MI Loss
+            hand_crafted_prompts = [prompts[0] if isinstance(prompts, list) else prompts for prompts in input_text]
         else:
             # Fallback to some generic or 7-class descriptors if available
             from models.Text import class_descriptor_7_only_face
@@ -88,7 +161,26 @@ class GenerateModel(nn.Module):
                 nn.Sigmoid()
             )
         else:
-            self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context)
+            self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context, context_gating=self.is_multilabel)
+
+        # ==================== Q2L Multi-Label Head (EMOTIC) ====================
+        if self.is_multilabel:
+            print("=> EMOTIC Mode: Initializing Q2L Multi-Label Classification Head")
+            self.q2l_head = Q2LabelHead(
+                num_classes=self.num_classes if hasattr(self, 'num_classes') else len(input_text),
+                dim=512,
+                num_heads=8,
+                num_layers=2,
+                dropout=0.1
+            )
+            # Initialize label queries from CLIP text features (done after model is on device)
+            self._q2l_initialized = False
+        
+        # ==================== Co-occurrence Matrix (EMOTIC) ====================
+        if self.is_multilabel:
+            # Will be set externally from training data statistics
+            nc = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
+            self.register_buffer('label_cooccurrence', torch.zeros(nc, nc))
 
         # MoCo Initialization
         if hasattr(args, 'use_moco') and args.use_moco:
@@ -124,6 +216,30 @@ class GenerateModel(nn.Module):
             self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
             self.queue = nn.functional.normalize(self.queue, dim=0)
             self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
+    def init_q2l_from_text(self):
+        """Initialize Q2L label queries from hand-crafted CLIP text features.
+        Called once after model is on device and text encoder is ready."""
+        if self.is_multilabel and not self._q2l_initialized:
+            with torch.no_grad():
+                hand_crafted_prompts = self.hand_crafted_prompt_embeddings
+                tokenized = self.tokenized_hand_crafted_prompts.to(hand_crafted_prompts.device)
+                text_feats = self.text_encoder(hand_crafted_prompts, tokenized)
+                text_feats = text_feats.float()
+                text_feats = text_feats / (text_feats.norm(dim=-1, keepdim=True) + 1e-6)
+            self.q2l_head.init_from_text_features(text_feats)
+            self._q2l_initialized = True
+
+    def set_label_cooccurrence(self, cooccurrence_matrix):
+        """Set the label co-occurrence matrix from training data.
+        Args:
+            cooccurrence_matrix: (num_classes, num_classes) numpy or tensor
+        """
+        if isinstance(cooccurrence_matrix, np.ndarray):
+            import numpy as np
+            cooccurrence_matrix = torch.from_numpy(cooccurrence_matrix).float()
+        self.label_cooccurrence.copy_(cooccurrence_matrix)
+        print(f"=> Set label co-occurrence matrix: {cooccurrence_matrix.shape}")
 
     @torch.no_grad()
     def _momentum_update_key_encoder(self):
@@ -292,21 +408,30 @@ class GenerateModel(nn.Module):
             self._dequeue_and_enqueue(k_video_features)
 
         ################# Classification ###################
-        # Calculate logits
-        if self.is_ensemble:
-            # Reshape text features for ensembling: (C*P, D) -> (C, P, D)
-            text_features = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
-            # Normalize again just in case (optional but safe) - Robust version
-            text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
+        if self.is_multilabel:
+            # ===== Q2L Multi-Label Path (EMOTIC) =====
+            # Lazy-init Q2L label queries from CLIP text features
+            if not self._q2l_initialized:
+                self.init_q2l_from_text()
             
-            # Compute logits per prompt: (B, D) @ (D, P, C) -> (B, P, C)
-            # Note: We use einsum for clarity with batch and ensemble dimensions
-            logits = torch.einsum('bd,cpd->bcp', video_features, text_features)
-            
-            # Average the logits across the prompts for each class
-            output = torch.mean(logits, dim=2) / self.args.temperature
+            # Q2L: label queries cross-attend to visual features → (B, 26) logits
+            output = self.q2l_head(video_features)  # (B, num_classes) raw logits for sigmoid
             
         else:
-            output = video_features @ text_features.t() / self.args.temperature
+            # ===== Single-Label Path (RAER, CAER, DAiSEE, etc.) =====
+            if self.is_ensemble:
+                # Reshape text features for ensembling: (C*P, D) -> (C, P, D)
+                text_features = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
+                # Normalize again just in case (optional but safe) - Robust version
+                text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
+                
+                # Compute logits per prompt: (B, D) @ (D, P, C) -> (B, P, C)
+                logits = torch.einsum('bd,cpd->bcp', video_features, text_features)
+                
+                # Average the logits across the prompts for each class
+                output = torch.mean(logits, dim=2) / self.args.temperature
+                
+            else:
+                output = video_features @ text_features.t() / self.args.temperature
 
         return output, text_features, hand_crafted_text_features, moco_logits

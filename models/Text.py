@@ -376,37 +376,243 @@ class_names_emotic = [
 class_names_with_context_emotic = [f"A person shows {c.lower()}." for c in class_names_emotic]
 
 class_descriptor_emotic = [
-    "A person feeling fond and loving.",
-    "A person displaying intense anger and rage.",
-    "A person looking bothered and irritated.",
-    "A person expecting or waiting for something.",
-    "A person feeling disgust or strong dislike.",
-    "A person looking self-assured and confident.",
-    "A person expressing objection or disapproval.",
-    "A person looking isolated or disconnected from the surroundings.",
-    "A person feeling restless, uneasy, or anxious.",
-    "A person looking confused, uncertain, or doubtful.",
-    "A person feeling self-conscious or embarrassed.",
-    "A person highly focused and engaged in an activity.",
-    "A person feeling respected or showing self-esteem.",
-    "A person feeling enthusiastic and excited.",
-    "A person looking exhausted, tired, or fatigued.",
-    "A person showing genuine fear or panic.",
-    "A person experiencing joy and happiness.",
-    "A person experiencing physical or emotional pain.",
-    "A person feeling calm, relaxed, and at peace.",
-    "A person experiencing enjoyment and pleasure.",
-    "A person expressing sorrow and sadness.",
-    "A person looking sensitive or emotionally vulnerable.",
-    "A person experiencing hardship or suffering.",
-    "A person looking astonished or surprised.",
-    "A person feeling compassion and sympathy.",
-    "A person showing strong desire or yearning."
+    # 0. Affection — co-occurs with: Happiness, Pleasure
+    "A person showing warm affection with gentle touch, a tender embrace, or a loving smile directed at someone nearby.",
+    # 1. Anger — co-occurs with: Annoyance, Disapproval
+    "A person displaying intense anger with furrowed brows, clenched fists, a glaring stare, and tense rigid body in a confrontational scene.",
+    # 2. Annoyance — co-occurs with: Anger, Disapproval
+    "A person looking bothered and irritated, with a slight frown, crossed arms, and an impatient stance in an uncomfortable situation.",
+    # 3. Anticipation — co-occurs with: Engagement, Excitement, Confidence
+    "A person actively waiting or expecting something, leaning forward with alert eyes, focused gaze, and an eager posture.",
+    # 4. Aversion — co-occurs with: Disgust, Annoyance
+    "A person feeling strong dislike or disgust, turning away with a wrinkled nose, repulsed expression, and avoidance body language.",
+    # 5. Confidence — co-occurs with: Engagement, Excitement, Esteem
+    "A person looking self-assured and confident, standing tall with open posture, direct eye contact, and a composed expression.",
+    # 6. Disapproval — co-occurs with: Anger, Annoyance
+    "A person expressing objection or disapproval, with a stern look, shaking head, pursed lips, and a critical stance.",
+    # 7. Disconnection — co-occurs with: Fatigue, Sadness
+    "A person looking isolated and disconnected, gazing away from others, with a withdrawn posture and blank expression in a social context.",
+    # 8. Disquietment — co-occurs with: Fear, Doubt/Confusion
+    "A person feeling restless and uneasy, fidgeting, with widened eyes, furrowed brows, and anxious body movements in an uncertain setting.",
+    # 9. Doubt/Confusion — co-occurs with: Disquietment, Embarrassment
+    "A person looking confused and uncertain, tilting their head, squinting eyes, with a puzzled frown and hesitant posture.",
+    # 10. Embarrassment — co-occurs with: Doubt/Confusion, Sensitivity
+    "A person feeling self-conscious and embarrassed, covering their face, looking down, blushing, or hiding behind others.",
+    # 11. Engagement — co-occurs with: Anticipation, Excitement, Confidence
+    "A person highly focused and mentally engaged, with alert eyes fixed on an activity, attentive posture, and concentrated expression.",
+    # 12. Esteem — co-occurs with: Confidence, Happiness
+    "A person feeling respected or showing pride, with a dignified posture, slight smile, and an air of accomplishment or recognition.",
+    # 13. Excitement — co-occurs with: Engagement, Happiness, Anticipation
+    "A person feeling enthusiastic and excited, with wide eyes, an energetic smile, animated gestures, and dynamic body movement.",
+    # 14. Fatigue — co-occurs with: Disconnection, Sadness
+    "A person looking exhausted and tired, with drooping eyelids, slouched posture, yawning, and low energy in their movements.",
+    # 15. Fear — co-occurs with: Disquietment, Suffering
+    "A person showing genuine fear or panic, with wide terrified eyes, raised eyebrows, open mouth, and a defensive or frozen posture.",
+    # 16. Happiness — co-occurs with: Excitement, Pleasure, Engagement
+    "A person experiencing joy and happiness, with a bright genuine smile, crinkled eyes, relaxed open posture, in a positive scene.",
+    # 17. Pain — co-occurs with: Suffering, Sadness
+    "A person experiencing physical or emotional pain, grimacing, clutching a body part, with a contorted expression and tense muscles.",
+    # 18. Peace — co-occurs with: Pleasure, Happiness
+    "A person feeling calm and at peace, with a serene expression, relaxed shoulders, soft eyes, and a tranquil still posture.",
+    # 19. Pleasure — co-occurs with: Happiness, Engagement
+    "A person experiencing enjoyment and pleasure, with a content smile, relaxed body, and a satisfied look while engaged in an activity.",
+    # 20. Sadness — co-occurs with: Suffering, Pain, Disconnection
+    "A person expressing sorrow and sadness, with downturned lips, watery eyes, slumped shoulders, and a withdrawn demeanor.",
+    # 21. Sensitivity — co-occurs with: Sympathy, Embarrassment
+    "A person looking emotionally sensitive and vulnerable, with a soft trembling expression, moist eyes, and a fragile posture.",
+    # 22. Suffering — co-occurs with: Pain, Sadness, Fear
+    "A person enduring hardship or suffering, with a pained grimace, hunched body, and visible distress in a difficult context.",
+    # 23. Surprise — co-occurs with: Fear, Excitement
+    "A person looking astonished or surprised, with wide open eyes, raised eyebrows, dropped jaw, and a sudden backward lean.",
+    # 24. Sympathy — co-occurs with: Affection, Sensitivity
+    "A person feeling compassion and sympathy, with a caring gaze, gentle touch toward someone, and an empathetic expression.",
+    # 25. Yearning — co-occurs with: Sadness, Anticipation
+    "A person showing strong desire or yearning, with a wistful gaze, reaching gesture, and a longing expression directed at something distant."
 ]
 
 prompt_ensemble_emotic = [
-    [f"A photo of a person showing {c.lower()}.", f"A person feeling {c.lower()}.", f"An expression of {c.lower()}."]
-    for c in class_names_emotic
+    [  # 0. Affection (co-occurs: Happiness, Pleasure)
+        "A person showing warm affection with a tender embrace or loving touch.",
+        "A person with a gentle caring smile reaching out to comfort someone.",
+        "A scene of emotional warmth between people sharing a loving moment.",
+        "A person displaying fondness with soft eyes and open welcoming arms.",
+        "A close interaction between people showing love and emotional closeness."
+    ],
+    [  # 1. Anger (co-occurs: Annoyance, Disapproval)
+        "A person displaying intense anger with furrowed brows and clenched fists.",
+        "A person with a hostile glare, rigid body, and aggressive confrontational stance.",
+        "A scene of conflict showing a person seething with rage and frustration.",
+        "A person shouting or arguing with visible anger in their expression.",
+        "A furious person with tense muscles and a threatening aggressive posture."
+    ],
+    [  # 2. Annoyance (co-occurs: Anger, Disapproval)
+        "A person looking bothered and irritated with a slight frown.",
+        "A person with crossed arms and an impatient expression of mild frustration.",
+        "A scene showing someone visibly annoyed by something in their surroundings.",
+        "A person rolling their eyes or sighing in annoyance.",
+        "A mildly frustrated person showing displeasure without full-blown anger."
+    ],
+    [  # 3. Anticipation (co-occurs: Engagement, Excitement, Confidence)
+        "A person eagerly waiting and expecting something with focused attention.",
+        "A person leaning forward with alert eyes and an anticipatory expression.",
+        "A scene showing someone poised and ready for an upcoming event or action.",
+        "A person with widened eyes and slightly parted lips in keen anticipation.",
+        "A person watching intently with excitement about what is coming next."
+    ],
+    [  # 4. Aversion (co-occurs: Disgust, Annoyance)
+        "A person feeling strong dislike, turning away with a wrinkled nose.",
+        "A person with a repulsed expression, leaning back from something unpleasant.",
+        "A scene showing someone avoiding or recoiling from an unwanted stimulus.",
+        "A person displaying physical avoidance with disgust on their face.",
+        "A person shielding themselves from something they find deeply unpleasant."
+    ],
+    [  # 5. Confidence (co-occurs: Engagement, Excitement, Esteem)
+        "A person looking self-assured with a tall upright posture and direct gaze.",
+        "A person standing confidently with open body language and a composed expression.",
+        "A scene showing someone in control, leading, or performing with confidence.",
+        "A person with a slight assured smile and relaxed shoulders showing self-belief.",
+        "A person demonstrating mastery and poise in their actions and demeanor."
+    ],
+    [  # 6. Disapproval (co-occurs: Anger, Annoyance)
+        "A person expressing disapproval with a stern critical look and pursed lips.",
+        "A person shaking their head with a judgmental frown of disagreement.",
+        "A scene showing someone objecting to or criticizing something around them.",
+        "A person with crossed arms and a skeptical disapproving expression.",
+        "A person looking on with clear dissatisfaction and a negative assessment."
+    ],
+    [  # 7. Disconnection (co-occurs: Fatigue, Sadness)
+        "A person looking isolated and disconnected, gazing away from everyone.",
+        "A person with a blank withdrawn expression, disengaged from the surroundings.",
+        "A scene showing someone alone and emotionally detached from the group.",
+        "A person staring into space with an absent and uninvolved demeanor.",
+        "A person physically present but mentally elsewhere, showing emotional distance."
+    ],
+    [  # 8. Disquietment (co-occurs: Fear, Doubt/Confusion)
+        "A person feeling restless and uneasy with nervous fidgeting.",
+        "A person with widened eyes, furrowed brows, and anxious body movements.",
+        "A scene showing someone uncomfortable and troubled by their surroundings.",
+        "A person biting their lip or wringing hands in visible unease.",
+        "A person looking around nervously with a worried unsettled expression."
+    ],
+    [  # 9. Doubt/Confusion (co-occurs: Disquietment, Embarrassment)
+        "A person looking confused with a tilted head and puzzled frown.",
+        "A person squinting their eyes with uncertainty and a hesitant posture.",
+        "A scene showing someone struggling to understand or make a decision.",
+        "A person scratching their head with a bewildered expression.",
+        "A person looking back and forth with indecision and visible confusion."
+    ],
+    [  # 10. Embarrassment (co-occurs: Doubt/Confusion, Sensitivity)
+        "A person feeling embarrassed, covering their face and looking down.",
+        "A person blushing or hiding behind something with a self-conscious expression.",
+        "A scene showing someone in an awkward situation feeling exposed.",
+        "A person averting their gaze with a sheepish uncomfortable smile.",
+        "A person shrinking away from attention in visible embarrassment."
+    ],
+    [  # 11. Engagement (co-occurs: Anticipation, Excitement, Confidence)
+        "A person deeply focused and mentally absorbed in an activity.",
+        "A person with alert attentive eyes fixed on their task with concentration.",
+        "A scene showing someone fully immersed and participating actively.",
+        "A person leaning in with engaged body language and intense focus.",
+        "A person completely absorbed in what they are watching or doing."
+    ],
+    [  # 12. Esteem (co-occurs: Confidence, Happiness)
+        "A person feeling proud and respected with a dignified bearing.",
+        "A person standing with self-respect and an air of accomplishment.",
+        "A scene showing someone receiving recognition or feeling valued.",
+        "A person with a proud upright posture and a satisfied confident look.",
+        "A person radiating a sense of worth and achievement."
+    ],
+    [  # 13. Excitement (co-occurs: Engagement, Happiness, Anticipation)
+        "A person feeling excited with wide eyes, big smile, and energetic gestures.",
+        "A person jumping, cheering, or clapping with enthusiasm and joy.",
+        "A scene showing someone thrilled and animated about an event.",
+        "A person with dynamic body movement expressing pure excitement.",
+        "A person radiating enthusiasm with an electric energized expression."
+    ],
+    [  # 14. Fatigue (co-occurs: Disconnection, Sadness)
+        "A person looking exhausted with drooping eyelids and slouched posture.",
+        "A person yawning or rubbing their eyes with visible tiredness.",
+        "A scene showing someone drained of energy, barely keeping their eyes open.",
+        "A person with a heavy head resting on their hand in fatigue.",
+        "A person moving slowly with low energy and a weary expression."
+    ],
+    [  # 15. Fear (co-occurs: Disquietment, Suffering)
+        "A person showing fear with wide terrified eyes and a frozen defensive posture.",
+        "A person backing away in panic with raised eyebrows and open mouth.",
+        "A scene showing someone in danger or facing a threatening situation.",
+        "A person trembling or cowering with genuine terror on their face.",
+        "A person screaming or gasping in a moment of pure fright."
+    ],
+    [  # 16. Happiness (co-occurs: Excitement, Pleasure, Engagement)
+        "A person experiencing joy with a bright genuine smile and crinkled eyes.",
+        "A person laughing heartily with a relaxed happy expression.",
+        "A scene of celebration or fun showing a person radiating happiness.",
+        "A person with a warm beaming smile in a positive joyful context.",
+        "A person showing pure delight and contentment in their expression."
+    ],
+    [  # 17. Pain (co-occurs: Suffering, Sadness)
+        "A person experiencing pain with a grimace and contorted expression.",
+        "A person clutching a body part or wincing in visible physical distress.",
+        "A scene showing someone hurt and in obvious physical or emotional pain.",
+        "A person with clenched teeth and tense muscles from pain.",
+        "A person crying out or doubling over in acute discomfort."
+    ],
+    [  # 18. Peace (co-occurs: Pleasure, Happiness)
+        "A person feeling calm and peaceful with a serene relaxed expression.",
+        "A person with soft eyes and a gentle smile in a tranquil setting.",
+        "A scene of stillness showing someone at complete ease and rest.",
+        "A person meditating or resting quietly with a composed demeanor.",
+        "A person in a natural calm environment looking deeply relaxed."
+    ],
+    [  # 19. Pleasure (co-occurs: Happiness, Engagement)
+        "A person experiencing pleasure with a content satisfied smile.",
+        "A person savoring an enjoyable moment with relaxed body language.",
+        "A scene showing someone delighting in a pleasant activity or experience.",
+        "A person with a look of enjoyment and deep satisfaction.",
+        "A person indulging in something with visible delight and comfort."
+    ],
+    [  # 20. Sadness (co-occurs: Suffering, Pain, Disconnection)
+        "A person expressing sorrow with downturned lips and watery eyes.",
+        "A person crying or on the verge of tears with a dejected posture.",
+        "A scene showing someone grieving or mourning in a somber setting.",
+        "A person with slumped shoulders and a heavy sorrowful expression.",
+        "A person sitting alone looking down with deep melancholy."
+    ],
+    [  # 21. Sensitivity (co-occurs: Sympathy, Embarrassment)
+        "A person looking emotionally sensitive with a soft vulnerable expression.",
+        "A person with moist eyes and a trembling lip showing emotional fragility.",
+        "A scene showing someone deeply moved and emotionally touched.",
+        "A person reacting with heightened emotional sensitivity to something.",
+        "A person tearing up or looking deeply affected by an emotional moment."
+    ],
+    [  # 22. Suffering (co-occurs: Pain, Sadness, Fear)
+        "A person enduring suffering with a pained grimace and hunched body.",
+        "A person in visible distress from hardship or emotional anguish.",
+        "A scene showing someone struggling through a difficult painful situation.",
+        "A person bearing pain or grief with a tortured expression.",
+        "A person overwhelmed by suffering, looking broken and exhausted."
+    ],
+    [  # 23. Surprise (co-occurs: Fear, Excitement)
+        "A person looking surprised with wide open eyes and dropped jaw.",
+        "A person with raised eyebrows and a sudden backward lean of astonishment.",
+        "A scene showing someone caught off guard by an unexpected event.",
+        "A person gasping with hands raised in a moment of shock.",
+        "A person with a startled expression reacting to something unforeseen."
+    ],
+    [  # 24. Sympathy (co-occurs: Affection, Sensitivity)
+        "A person feeling compassion with a caring empathetic expression.",
+        "A person gently touching or comforting someone in distress.",
+        "A scene showing someone listening with deep sympathy and concern.",
+        "A person with a soft warm gaze directed at someone who is suffering.",
+        "A person showing solidarity and emotional support through their demeanor."
+    ],
+    [  # 25. Yearning (co-occurs: Sadness, Anticipation)
+        "A person showing yearning with a wistful gaze into the distance.",
+        "A person reaching out or looking longingly at something far away.",
+        "A scene showing someone deeply wanting something they cannot have.",
+        "A person with a nostalgic expression and a sense of unfulfilled desire.",
+        "A person looking through a window with longing and deep want."
+    ]
 ]
 
 

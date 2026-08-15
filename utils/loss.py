@@ -186,3 +186,131 @@ class SemanticLDLLoss(nn.Module):
         # 4. KL Divergence Loss
         loss = self.kl_div(log_probs, soft_targets)
         return loss
+
+class AsymmetricLoss(nn.Module):
+    def __init__(self, gamma_neg=4, gamma_pos=1, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=True):
+        super(AsymmetricLoss, self).__init__()
+
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+
+    def forward(self, x, y):
+        # Cast to float32 to prevent NaN with AMP (float16)
+        x = x.float()
+        y = y.float()
+
+        # Calculating Probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic CE calculation
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        loss = los_pos + los_neg
+
+        # Asymmetric Focusing
+        if self.gamma_neg > 0 or self.gamma_pos > 0:
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(False)
+            pt0 = xs_pos * y
+            pt1 = xs_neg * (1 - y)
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+            one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(True)
+            loss *= one_sided_w
+
+        return -loss.sum()
+
+
+class MaskedAsymmetricLoss(nn.Module):
+    """
+    Masked Asymmetric Loss for Multi-Label Classification.
+    
+    Extends ASL by randomly masking a portion of negative labels during training.
+    This addresses the severe positive/negative imbalance in datasets like EMOTIC
+    where each image has ~2 positive labels out of 26 (i.e., 24 negatives).
+    
+    The masking reduces the dominance of easy negatives, allowing the model to 
+    focus on learning the positive labels and hard negatives.
+    
+    Args:
+        gamma_neg (float): Focusing parameter for negative samples. Default: 4.
+        gamma_pos (float): Focusing parameter for positive samples. Default: 0.
+        clip (float): Asymmetric clipping threshold. Default: 0.05.
+        mask_ratio (float): Ratio of negative labels to randomly mask. Default: 0.3.
+        eps (float): Small value for numerical stability. Default: 1e-8.
+    """
+    def __init__(self, gamma_neg=4, gamma_pos=0, clip=0.05, mask_ratio=0.3, 
+                 eps=1e-8, disable_torch_grad_focal_loss=True):
+        super(MaskedAsymmetricLoss, self).__init__()
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.mask_ratio = mask_ratio
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+
+    def forward(self, x, y):
+        """
+        Args:
+            x: (B, C) raw logits
+            y: (B, C) multi-hot target labels (0 or 1)
+        """
+        # Cast to float32 to prevent NaN with AMP (float16)
+        x = x.float()
+        y = y.float()
+
+        # ===== Random Negative Masking =====
+        # Create mask: keep all positives (y==1), randomly keep (1-mask_ratio) of negatives
+        if self.training:
+            neg_mask = (y == 0).float()
+            # For each negative position, keep it with probability (1 - mask_ratio)
+            keep_prob = 1.0 - self.mask_ratio * neg_mask
+            random_mask = torch.bernoulli(keep_prob)  # (B, C) binary mask
+        else:
+            random_mask = torch.ones_like(y)  # No masking during eval
+
+        # Calculating Probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic CE calculation
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        loss = los_pos + los_neg
+
+        # Apply random mask (zeroes out masked negative positions)
+        loss = loss * random_mask
+
+        # Asymmetric Focusing
+        if self.gamma_neg > 0 or self.gamma_pos > 0:
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(False)
+            pt0 = xs_pos * y
+            pt1 = xs_neg * (1 - y)
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+            one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(True)
+            loss *= one_sided_w
+
+        # Normalize by number of unmasked positions (not total) for stable gradients
+        num_unmasked = random_mask.sum().clamp(min=1.0)
+        return -loss.sum() / num_unmasked * y.shape[1]  # Scale back to comparable magnitude
+

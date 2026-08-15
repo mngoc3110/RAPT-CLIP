@@ -48,7 +48,7 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
             if "image_encoder" in name:
                 param.requires_grad = True
 
-    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc"]
+    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "q2l_head", "label_query", "label_decoder", "modality_importance", "adaptive_gate", "gate_proj"]
     
     print('\nTrainable parameters:')
     for name, param in model.named_parameters():
@@ -176,10 +176,14 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
         
         # Create a weight for each sample
         sample_weights = []
+        raw_labels = []
         with open(train_annotation_file_path, 'r') as f:
             for line in f:
-                label = int(line.strip().split()[2]) -1 # label is 1-based
-                sample_weights.append(class_weights[label])
+                raw_labels.append(int(line.strip().split()[-1]))
+                
+        min_label = min(raw_labels) if raw_labels else 0
+        for label in raw_labels:
+            sample_weights.append(class_weights[label - min_label])
         
         sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights))
         shuffle = False # Sampler and shuffle are mutually exclusive

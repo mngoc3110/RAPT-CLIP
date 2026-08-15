@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class CrossModalAttentionFusion(nn.Module):
@@ -16,16 +17,22 @@ class CrossModalAttentionFusion(nn.Module):
         Output = concat(face_out, body_out) → 1024-d
 
     Uses residual connections and LayerNorm for stable training.
+    
+    When context_gating=True (for EMOTIC), adds learnable modality importance
+    weights that the model can learn to prioritize context-heavy information.
 
     Args:
         dim (int): Feature dimension of each modality. Default: 512.
         num_heads (int): Number of attention heads. Default: 4.
         dropout (float): Dropout rate for attention weights. Default: 0.1.
+        use_context (bool): Enable 3-stream (face, body, context) fusion.
+        context_gating (bool): Enable learnable modality importance gating.
     """
 
-    def __init__(self, dim=512, num_heads=4, dropout=0.1, use_context=False):
+    def __init__(self, dim=512, num_heads=4, dropout=0.1, use_context=False, context_gating=False):
         super().__init__()
         self.use_context = use_context
+        self.context_gating = context_gating
 
         if not self.use_context:
             # Cross-attention: Face queries, Body keys/values
@@ -55,6 +62,23 @@ class CrossModalAttentionFusion(nn.Module):
                 embed_dim=dim, num_heads=num_heads, dropout=dropout, batch_first=True
             )
             self.norm_c = nn.LayerNorm(dim)
+        
+        # ========== Context-Priority Gating ==========
+        if self.context_gating and self.use_context:
+            # Learnable modality importance: initialized to favor context slightly
+            # [face, body, context] → softmax → weights
+            self.modality_importance = nn.Parameter(torch.tensor([0.2, 0.3, 0.5]))
+            
+            # Input-dependent gating network (adaptive per sample)
+            # Takes concatenated features (3*dim) → 3 weights
+            self.adaptive_gate = nn.Sequential(
+                nn.Linear(dim * 3, dim),
+                nn.GELU(),
+                nn.Linear(dim, 3)
+            )
+            
+            # Projection to match expected output dim (1536 for 3-stream concat)
+            self.gate_proj = nn.Linear(dim, dim * 3)
 
         self._init_weights()
 
@@ -73,6 +97,12 @@ class CrossModalAttentionFusion(nn.Module):
             nn.init.xavier_uniform_(module.out_proj.weight)
             nn.init.constant_(module.out_proj.bias, 0.0)
 
+    def get_modality_weights(self):
+        """Get current learned modality importance weights (for logging/monitoring)."""
+        if self.context_gating and self.use_context:
+            return F.softmax(self.modality_importance, dim=0).detach().cpu().tolist()
+        return None
+
     def forward(self, face_feat, body_feat, context_feat=None):
         """
         Args:
@@ -81,6 +111,9 @@ class CrossModalAttentionFusion(nn.Module):
             context_feat: (B, dim) optional context features
         Returns:
             fused: concatenated cross-attended features
+                   - 2-stream: (B, 2*dim) = (B, 1024)
+                   - 3-stream: (B, 3*dim) = (B, 1536)
+                   - 3-stream + context_gating: (B, 3*dim) = (B, 1536)
         """
         if not self.use_context:
             # Reshape to sequence format: (B, 1, dim)
@@ -119,4 +152,25 @@ class CrossModalAttentionFusion(nn.Module):
             context_cross, _ = self.cross_attn_c2fb(context_q, face_body_kv, face_body_kv)
             context_out = self.norm_c(context_cross.squeeze(1) + context_feat)
 
-            return torch.cat((face_out, body_out, context_out), dim=-1)
+            if self.context_gating:
+                # ===== Context-Priority Gating =====
+                # Combine static prior + input-dependent adaptive weights
+                static_weights = F.softmax(self.modality_importance, dim=0)  # (3,)
+                
+                # Adaptive gate: depends on the actual features in this batch
+                concat_for_gate = torch.cat([face_out, body_out, context_out], dim=-1)  # (B, 3*dim)
+                adaptive_weights = F.softmax(self.adaptive_gate(concat_for_gate), dim=-1)  # (B, 3)
+                
+                # Mix static prior (0.3) + adaptive (0.7) for stability
+                combined_weights = 0.3 * static_weights.unsqueeze(0) + 0.7 * adaptive_weights  # (B, 3)
+                
+                # Weighted sum per modality, then project back to 1536-d for compatibility
+                weighted_feat = (combined_weights[:, 0:1] * face_out + 
+                                combined_weights[:, 1:2] * body_out + 
+                                combined_weights[:, 2:3] * context_out)  # (B, dim=512)
+                
+                # Project back to expected 1536-d output
+                return self.gate_proj(weighted_feat)  # (B, 1536)
+            else:
+                return torch.cat((face_out, body_out, context_out), dim=-1)
+

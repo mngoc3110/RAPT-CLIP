@@ -41,7 +41,9 @@ def get_class_counts(annotation_file):
     labels = []
     with open(annotation_file, 'r') as f:
         for line in f:
-            labels.append(int(line.strip().split()[2]))
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                labels.append(int(parts[-1]))
     
     # Count occurrences of each class
     class_counts = Counter(labels)
@@ -263,3 +265,105 @@ def computer_uar_war(val_loader, model, device, class_names, log_confusion_matri
         f.write(f'WAR (Accuracy): {war:.2f}%\n')
         f.write('************************\n')
     return uar, war
+
+
+def compute_multilabel_metrics(val_loader, model, device, class_names, log_txt_path, title="Multi-Label Metrics"):
+    """
+    Comprehensive multi-label evaluation for EMOTIC dataset.
+    
+    Reports:
+    - mAP (mean Average Precision) — primary metric
+    - Per-class AP (Average Precision)
+    - Optimal F1 score with per-class thresholds
+    - Per-class precision and recall at threshold 0.5
+    """
+    from sklearn.metrics import average_precision_score, precision_recall_fscore_support
+    
+    model.eval()
+    all_preds = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for i, batch in enumerate(tqdm.tqdm(val_loader, desc="Computing Multi-Label Metrics")):
+            if len(batch) == 4:
+                images_face, images_body, images_context, target = batch
+                images_context = images_context.to(device)
+            else:
+                images_face, images_body, target = batch
+                images_context = None
+
+            images_face = images_face.to(device)
+            images_body = images_body.to(device)
+            target = target.to(device)
+
+            if images_context is not None:
+                output, _, _, _ = model(images_face, images_body, images_context)
+            else:
+                output, _, _, _ = model(images_face, images_body)
+            
+            # Apply sigmoid to get probabilities
+            preds = torch.sigmoid(output)
+            
+            all_preds.append(preds.cpu())
+            all_targets.append(target.cpu())
+
+    all_preds = torch.cat(all_preds, 0).numpy()
+    all_targets = torch.cat(all_targets, 0).numpy()
+
+    # 1. mAP (mean Average Precision)
+    try:
+        map_score = average_precision_score(all_targets, all_preds, average='macro') * 100
+    except:
+        map_score = 0.0
+
+    # 2. Per-class AP
+    per_class_ap = []
+    for i in range(len(class_names)):
+        try:
+            ap = average_precision_score(all_targets[:, i], all_preds[:, i]) * 100
+        except:
+            ap = 0.0
+        per_class_ap.append(ap)
+    
+    # 3. F1 Score at threshold 0.5
+    binary_preds = (all_preds > 0.5).astype(int)
+    precision, recall, f1, support = precision_recall_fscore_support(
+        all_targets, binary_preds, average=None, zero_division=0
+    )
+    macro_f1 = np.mean(f1) * 100
+    macro_precision = np.mean(precision) * 100
+    macro_recall = np.mean(recall) * 100
+
+    # Print results
+    print(f"\n{'='*60}")
+    print(f"  {title}")
+    print(f"{'='*60}")
+    print(f"  mAP (macro):      {map_score:.2f}%")
+    print(f"  Macro F1 (t=0.5): {macro_f1:.2f}%")
+    print(f"  Macro Precision:  {macro_precision:.2f}%")
+    print(f"  Macro Recall:     {macro_recall:.2f}%")
+    print(f"\n  {'Class':<20s} {'AP':>8s} {'Prec':>8s} {'Recall':>8s} {'F1':>8s} {'Support':>8s}")
+    print(f"  {'-'*56}")
+    for i, name in enumerate(class_names):
+        sup = int(all_targets[:, i].sum())
+        print(f"  {name:<20s} {per_class_ap[i]:>7.2f}% {precision[i]*100:>7.2f}% {recall[i]*100:>7.2f}% {f1[i]*100:>7.2f}% {sup:>7d}")
+    print(f"{'='*60}\n")
+
+    # Write to log
+    with open(log_txt_path, 'a') as f:
+        f.write(f'\n{"="*60}\n')
+        f.write(f'  {title}\n')
+        f.write(f'{"="*60}\n')
+        f.write(f'  mAP (macro): {map_score:.2f}%\n')
+        f.write(f'  Macro F1 (t=0.5): {macro_f1:.2f}%\n')
+        f.write(f'  Macro Precision: {macro_precision:.2f}%\n')
+        f.write(f'  Macro Recall: {macro_recall:.2f}%\n\n')
+        f.write(f'  {"Class":<20s} {"AP":>8s} {"Prec":>8s} {"Recall":>8s} {"F1":>8s} {"Support":>8s}\n')
+        f.write(f'  {"-"*56}\n')
+        for i, name in enumerate(class_names):
+            sup = int(all_targets[:, i].sum())
+            f.write(f'  {name:<20s} {per_class_ap[i]:>7.2f}% {precision[i]*100:>7.2f}% {recall[i]*100:>7.2f}% {f1[i]*100:>7.2f}% {sup:>7d}\n')
+        f.write(f'{"="*60}\n')
+    
+    return map_score, macro_f1
+
