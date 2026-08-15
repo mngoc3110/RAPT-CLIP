@@ -364,7 +364,7 @@ class GenerateModel(nn.Module):
         video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)
         
         # Save video features for feature-level knowledge distillation
-        self.last_video_features = video_features
+        self.last_video_features = video_features.detach()
 
         ################# Text Part ###################
         # Learnable prompts

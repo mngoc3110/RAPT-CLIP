@@ -29,7 +29,7 @@ python main.py \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
     --epochs 40 \
-    --batch-size 32 \
+    --batch-size 16 \
     --print-freq 50 \
     --use-amp \
     --grad-clip 1.0 \
