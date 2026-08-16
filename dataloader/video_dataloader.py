@@ -47,7 +47,7 @@ class VideoRecord(object):
         return int(raw_label)
 
 class VideoDataset(data.Dataset):
-    def __init__(self, list_file, num_segments, duration, mode, transform, image_size,bounding_box_face,bounding_box_body, crop_body=False, root_dir="", num_classes=8):
+    def __init__(self, list_file, num_segments, duration, mode, transform, image_size,bounding_box_face,bounding_box_body, crop_body=False, mask_context_body=False, root_dir="", num_classes=8):
         self.list_file = list_file
         self.duration = duration
         self.num_segments = num_segments
@@ -57,6 +57,7 @@ class VideoDataset(data.Dataset):
         self.bounding_box_face = bounding_box_face
         self.bounding_box_body = bounding_box_body
         self.crop_body = crop_body
+        self.mask_context_body = mask_context_body
         self.root_dir = root_dir
         
         # Debugging: Initialize for saving sample images
@@ -360,21 +361,32 @@ class VideoDataset(data.Dataset):
                 # IMPORTANT FIX: Return full image if no box found (Fallback)
                 img_pil_face = self._face_detect(img_pil, box, margin=10, mode='face')
 
-                # 5. Body Crop (Optional)
-                img_pil_body = img_pil # Default to full image
-                if self.crop_body:
-                    body_box = None
-                    if matched_video_key and matched_video_key in self.body_boxes:
-                        if frame_key in self.body_boxes[matched_video_key]:
-                            body_box = self.body_boxes[matched_video_key][frame_key]
-                    
-                    if body_box is not None:
-                        left, upper, right, lower = body_box
-                        # Ensure coordinates are within image bounds
-                        left = max(0, left); upper = max(0, upper)
-                        right = min(img_pil.width, right); lower = min(img_pil.height, lower)
-                        if right > left and lower > upper:
+                # 5. Body Crop & Retrieval
+                img_pil_body = img_pil  # Default to full image
+                body_box = None
+                if matched_video_key and matched_video_key in self.body_boxes:
+                    if frame_key in self.body_boxes[matched_video_key]:
+                        body_box = self.body_boxes[matched_video_key][frame_key]
+                
+                if body_box is not None:
+                    left, upper, right, lower = body_box
+                    left = max(0, left); upper = max(0, upper)
+                    right = min(img_pil.width, right); lower = min(img_pil.height, lower)
+                    if right > left and lower > upper:
+                        if self.crop_body:
                             img_pil_body = img_pil.crop((left, upper, right, lower))
+
+                # Context with optional Body Masking (CAER-Net style: Context = Image \ Body)
+                img_pil_context = img_pil
+                if self.mask_context_body and body_box is not None:
+                    left, upper, right, lower = body_box
+                    left = max(0, left); upper = max(0, upper)
+                    right = min(img_pil.width, right); lower = min(img_pil.height, lower)
+                    if right > left and lower > upper:
+                        img_pil_context = img_pil.copy()
+                        draw_ctx = ImageDraw.Draw(img_pil_context)
+                        # Fill person bounding box with neutral mean gray (128, 128, 128)
+                        draw_ctx.rectangle([left, upper, right, lower], fill=(128, 128, 128))
 
                 # 6. Resize and Stack
                 # Resize Body
@@ -382,15 +394,9 @@ class VideoDataset(data.Dataset):
                 img_cv_body, _ = self._resize_image(img_cv_body, self.image_size, self.image_size)
                 img_pil_body = self._cv2pil(img_cv_body)
                 
-                # Resize Face (face_detect returns cropped image, we need to resize it too?)
-                # Wait, _face_detect returns cropped image but doesn't resize it to self.image_size?
-                # The original code didn't resize face explicitly here, but transform does GroupResize.
-                # However, for consistency, let's trust the transform pipeline which includes GroupResize.
-                # But wait, `img_pil_face` might be tiny.
-                
                 images.append(img_pil_body)
                 images_face.append(img_pil_face)
-                images_context.append(img_pil)
+                images_context.append(img_pil_context)
                 
                 if p < num_real_frames - 1:
                     p += 1
@@ -399,20 +405,11 @@ class VideoDataset(data.Dataset):
             cap.release()
 
         # Transforms take a list of PIL images
-        # images_face: List[PIL.Image]
-        # images: List[PIL.Image]
-        
-        # Apply transforms
-        # Note: self.transform usually expects a list and returns a Tensor of shape (T*C, H, W)
-        # ToTorchFormatTensor returns (C*T, H, W) because Stack concatenates on axis 2.
-        
-        process_data = self.transform(images) # (C*T, H, W)
-        process_data_face = self.transform(images_face) # (C*T, H, W)
-        process_data_context = self.transform(images_context) # (C*T, H, W)
+        process_data = self.transform(images)  # (C*T, H, W)
+        process_data_face = self.transform(images_face)  # (C*T, H, W)
+        process_data_context = self.transform(images_context)  # (C*T, H, W)
 
         # Reshape to (T, C, H, W)
-        # Since Stack concatenated [img1, img2, ...] -> [R1,G1,B1, R2,G2,B2, ...]
-        # Reshaping to (-1, 3, H, W) correctly separates frames.
         process_data = process_data.view(-1, 3, self.image_size, self.image_size)
         process_data_face = process_data_face.view(-1, 3, self.image_size, self.image_size)
         process_data_context = process_data_context.view(-1, 3, self.image_size, self.image_size)
@@ -424,54 +421,57 @@ class VideoDataset(data.Dataset):
         return len(self.video_list)
 
 
-def train_data_loader(root_dir, list_file, num_segments, duration, image_size,dataset_name,bounding_box_face,bounding_box_body, crop_body=False, num_classes=8):
+def train_data_loader(root_dir, list_file, num_segments, duration, image_size, dataset_name, bounding_box_face, bounding_box_body, crop_body=False, mask_context_body=False, num_classes=8):
     if dataset_name in ["RAER", "CAER", "EMOTIC"]:
          train_transforms = torchvision.transforms.Compose([
-            # Apply ColorJitter from video_transform (works on list of images)
             ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.2), 
-            GroupRandomGrayscale(p=0.2), # Custom transform for list of images
+            GroupRandomGrayscale(p=0.2),
             RandomRotation(4),
             GroupResize(image_size),
             GroupRandomHorizontalFlip(),
             Stack(),
             ToTorchFormatTensor()])
     else:
-         # Default transforms for other datasets like CK+
          train_transforms = torchvision.transforms.Compose([
             GroupResize(image_size),
             GroupRandomHorizontalFlip(),
             Stack(),
             ToTorchFormatTensor()])
             
-    
-    train_data = VideoDataset(root_dir=root_dir, list_file=list_file,
-                              num_segments=num_segments, #16
-                              duration=duration, #1
-                              mode='train',
-                              transform=train_transforms,
-                              image_size=image_size,
-                              bounding_box_face=bounding_box_face,
-                              bounding_box_body=bounding_box_body,
-                              crop_body=crop_body,
-                              num_classes=num_classes
-                              )
+    train_data = VideoDataset(
+        root_dir=root_dir, list_file=list_file,
+        num_segments=num_segments,
+        duration=duration,
+        mode='train',
+        transform=train_transforms,
+        image_size=image_size,
+        bounding_box_face=bounding_box_face,
+        bounding_box_body=bounding_box_body,
+        crop_body=crop_body,
+        mask_context_body=mask_context_body,
+        num_classes=num_classes
+    )
     return train_data
 
 
-def test_data_loader(root_dir, list_file, num_segments, duration, image_size,bounding_box_face,bounding_box_body, crop_body=False, num_classes=8):
-    test_transform = torchvision.transforms.Compose([GroupResize(image_size),
-                                                     Stack(),
-                                                     ToTorchFormatTensor()])
+def test_data_loader(root_dir, list_file, num_segments, duration, image_size, bounding_box_face, bounding_box_body, crop_body=False, mask_context_body=False, num_classes=8):
+    test_transform = torchvision.transforms.Compose([
+        GroupResize(image_size),
+        Stack(),
+        ToTorchFormatTensor()
+    ])
     
-    test_data = VideoDataset(root_dir=root_dir, list_file=list_file,
-                             num_segments=num_segments,
-                             duration=duration,
-                             mode='test',
-                             transform=test_transform,
-                             image_size=image_size,
-                             bounding_box_face=bounding_box_face,
-                             bounding_box_body=bounding_box_body,
-                             crop_body=crop_body,
-                             num_classes=num_classes
-                             )
+    test_data = VideoDataset(
+        root_dir=root_dir, list_file=list_file,
+        num_segments=num_segments,
+        duration=duration,
+        mode='test',
+        transform=test_transform,
+        image_size=image_size,
+        bounding_box_face=bounding_box_face,
+        bounding_box_body=bounding_box_body,
+        crop_body=crop_body,
+        mask_context_body=mask_context_body,
+        num_classes=num_classes
+    )
     return test_data

@@ -137,12 +137,17 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     # Debug print
     print(f"DEBUG: args.dataset = '{args.dataset}'")
 
+    mask_context_body = getattr(args, 'mask_context_body', False)
+    if mask_context_body:
+        print("=> Background Masking Enabled: Masking body bounding box in context stream (CAER-Net style)")
+
     print(f"Loading train data (Standard) for {args.dataset}...")
     train_data = train_data_loader(
         root_dir=args.root_dir, list_file=train_annotation_file_path, num_segments=args.num_segments,
-        duration=args.duration, image_size=args.image_size,dataset_name=args.dataset,
-        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        duration=args.duration, image_size=args.image_size, dataset_name=args.dataset,
+        bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
         crop_body=args.crop_body,
+        mask_context_body=mask_context_body,
         num_classes=num_classes
     )
     
@@ -150,8 +155,9 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     val_data = test_data_loader(
         root_dir=args.root_dir, list_file=val_annotation_file_path, num_segments=args.num_segments,
         duration=args.duration, image_size=args.image_size,
-        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
         crop_body=args.crop_body,
+        mask_context_body=mask_context_body,
         num_classes=num_classes
     )
 
@@ -159,8 +165,9 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     test_data = test_data_loader(
         root_dir=args.root_dir, list_file=test_annotation_file_path, num_segments=args.num_segments,
         duration=args.duration, image_size=args.image_size,
-        bounding_box_face=args.bounding_box_face,bounding_box_body=args.bounding_box_body,
+        bounding_box_face=args.bounding_box_face, bounding_box_body=args.bounding_box_body,
         crop_body=args.crop_body,
+        mask_context_body=mask_context_body,
         num_classes=num_classes
     )
 

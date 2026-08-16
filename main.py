@@ -66,6 +66,7 @@ path_group.add_argument('--test-annotation', type=str, default='RAER/annotation/
 path_group.add_argument('--clip-path', type=str, default='ViT-B/16', help='Path to the pretrained CLIP model.')
 path_group.add_argument('--bounding-box-face', type=str, default='RAER/bounding_box/face.json', help='Absolute path to face bounding box JSON. E.g., /kaggle/input/raer-annot/annotation/bounding_box/face_abs.json')
 path_group.add_argument('--bounding-box-body', type=str, default='RAER/bounding_box/body.json', help='Absolute path to body bounding box JSON. E.g., /kaggle/input/raer-annot/annotation/bounding_box/body_abs.json')
+path_group.add_argument('--mask-context-body', action='store_true', help='Mask out the body bounding box in the context image (CAER-Net style: Context = Image \\ Body) to eliminate feature redundancy.')
 
 # --- Training Control ---
 train_group = parser.add_argument_group('Training Control', 'Parameters to control the training process')
