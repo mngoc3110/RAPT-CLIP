@@ -219,14 +219,16 @@ class AsymmetricLoss(nn.Module):
         # Asymmetric Focusing
         if self.gamma_neg > 0 or self.gamma_pos > 0:
             if self.disable_torch_grad_focal_loss:
-                torch.set_grad_enabled(False)
-            pt0 = xs_pos * y
-            pt1 = xs_neg * (1 - y)
+                torch_pos = xs_pos.detach()
+                torch_neg = xs_neg.detach()
+            else:
+                torch_pos = xs_pos
+                torch_neg = xs_neg
+            pt0 = torch_pos * y
+            pt1 = torch_neg * (1 - y)
             pt = pt0 + pt1
             one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
             one_sided_w = torch.pow(1 - pt, one_sided_gamma)
-            if self.disable_torch_grad_focal_loss:
-                torch.set_grad_enabled(True)
             loss *= one_sided_w
 
         return -loss.sum()
@@ -300,17 +302,105 @@ class MaskedAsymmetricLoss(nn.Module):
         # Asymmetric Focusing
         if self.gamma_neg > 0 or self.gamma_pos > 0:
             if self.disable_torch_grad_focal_loss:
-                torch.set_grad_enabled(False)
-            pt0 = xs_pos * y
-            pt1 = xs_neg * (1 - y)
+                torch_pos = xs_pos.detach()
+                torch_neg = xs_neg.detach()
+            else:
+                torch_pos = xs_pos
+                torch_neg = xs_neg
+            pt0 = torch_pos * y
+            pt1 = torch_neg * (1 - y)
             pt = pt0 + pt1
             one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
             one_sided_w = torch.pow(1 - pt, one_sided_gamma)
-            if self.disable_torch_grad_focal_loss:
-                torch.set_grad_enabled(True)
             loss *= one_sided_w
 
-        # Normalize by number of unmasked positions (not total) for stable gradients
-        num_unmasked = random_mask.sum().clamp(min=1.0)
-        return -loss.sum() / num_unmasked * y.shape[1]  # Scale back to comparable magnitude
+        # Sum loss over batch consistent with AsymmetricLoss
+        return -loss.sum()
+
+
+class ConceptAttentionDistillationLoss(nn.Module):
+    """
+    Concept-guided Attention Distillation (CAD) Loss from PromptCAD (TCSVT 2026).
+    
+    Aligns spatial attention maps between learnable prompts and reference concept prototypes.
+    Computes spatial attention scores via dot-product, normalizes with log-softmax,
+    and minimizes L1 distance between learnable and reference attention maps.
+    
+    Formula:
+        S(g, [f1..fN]) = g · [f1..fN]^T
+        A(g, [f1..fN]) = log_softmax(S(g, [f1..fN]) / tau)
+        L_att = || A_learn - A_ref ||_1
+    """
+    def __init__(self, tau=0.07):
+        super(ConceptAttentionDistillationLoss, self).__init__()
+        self.tau = tau
+
+    def forward(self, patch_features, learnable_text_features, ref_concept_features, target=None):
+        """
+        Args:
+            patch_features: (B, N, D) spatial patch tokens from vision encoder (N=196)
+            learnable_text_features: (C, D) learnable prompt text features
+            ref_concept_features: (C, D) reference/concept prototype text features
+            target: (B,) class indices or (B, C) multi-hot labels
+        """
+        B, N, D = patch_features.shape
+        C = learnable_text_features.shape[0]
+
+        # Select target text features for each sample in the batch
+        if target is not None:
+            if target.dtype == torch.float32 and target.dim() == 2:
+                # Multi-label (EMOTIC): Average text features for active positive labels
+                pos_mask = (target > 0.5).float()  # (B, C)
+                denom = pos_mask.sum(dim=1, keepdim=True).clamp(min=1.0)
+                g_sample = torch.matmul(pos_mask, learnable_text_features) / denom  # (B, D)
+                mu_sample = torch.matmul(pos_mask, ref_concept_features) / denom    # (B, D)
+            else:
+                # Single-label (RAER, DAiSEE, CK+): Index target class
+                target_idx = target.long().clamp(0, C - 1)
+                g_sample = learnable_text_features[target_idx]  # (B, D)
+                mu_sample = ref_concept_features[target_idx]    # (B, D)
+        else:
+            # Fallback: global mean
+            g_sample = learnable_text_features.mean(dim=0, keepdim=True).expand(B, -1)
+            mu_sample = ref_concept_features.mean(dim=0, keepdim=True).expand(B, -1)
+
+        # Normalize features
+        g_sample = g_sample / (g_sample.norm(dim=-1, keepdim=True) + 1e-6)
+        mu_sample = mu_sample / (mu_sample.norm(dim=-1, keepdim=True) + 1e-6)
+        patch_norm = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
+
+        # 1. Compute dot-product attention scores S: (B, N)
+        # einsum: (B, N, D) * (B, D) -> (B, N)
+        s_learn = torch.einsum('bnd,bd->bn', patch_norm, g_sample) / self.tau
+        s_ref = torch.einsum('bnd,bd->bn', patch_norm, mu_sample) / self.tau
+
+        # 2. Log-softmax normalization over spatial dimension N
+        a_learn = F.log_softmax(s_learn, dim=-1)
+        a_ref = F.log_softmax(s_ref, dim=-1)
+
+        # 3. L1 Attention Distillation Loss
+        loss_att = F.l1_loss(a_learn, a_ref, reduction='mean')
+        return loss_att
+
+
+class TextDistillationLoss(nn.Module):
+    """
+    Text Prototype Distillation Loss from PromptCAD (TCSVT 2026).
+    
+    Minimizes L1 distance between learned prompt embeddings and reference concept prototypes:
+        L_text = || g_c - mu_c ||_1
+    """
+    def __init__(self):
+        super(TextDistillationLoss, self).__init__()
+
+    def forward(self, learnable_text_features, ref_concept_features):
+        """
+        Args:
+            learnable_text_features: (C, D)
+            ref_concept_features: (C, D)
+        """
+        norm_learn = learnable_text_features / (learnable_text_features.norm(dim=-1, keepdim=True) + 1e-6)
+        norm_ref = ref_concept_features / (ref_concept_features.norm(dim=-1, keepdim=True) + 1e-6)
+        return F.l1_loss(norm_learn, norm_ref, reduction='mean')
+
 

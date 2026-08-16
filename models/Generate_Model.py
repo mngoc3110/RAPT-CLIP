@@ -367,34 +367,38 @@ class GenerateModel(nn.Module):
         self.last_video_features = video_features.detach()
 
         ################# Text Part ###################
-        # Learnable prompts
+        # Learnable prompts (always computed for both training and validation)
         prompts = self.prompt_learner()
         tokenized_prompts = self.tokenized_prompts
         
         # FORCE FP32 for Text Encoder to avoid NaN on MPS
         with torch.cuda.amp.autocast(enabled=False):
-            # Text Encoder might contain layers incompatible with AMP on MPS or just unstable
             text_features = self.text_encoder(prompts, tokenized_prompts)
-            # Robust normalization
-            text_features = text_features.float() # Ensure float32
+            text_features = text_features.float()  # Ensure float32
             text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
 
-        # Hand-crafted prompts (for MI Loss, not used for classification)
-        hand_crafted_prompts = self.hand_crafted_prompt_embeddings
-        tokenized_hand_crafted_prompts = self.tokenized_hand_crafted_prompts.to(hand_crafted_prompts.device)
-        
-        with torch.cuda.amp.autocast(enabled=False):
-            hand_crafted_text_features = self.text_encoder(hand_crafted_prompts, tokenized_hand_crafted_prompts)
-            hand_crafted_text_features = hand_crafted_text_features.float()
-            # Robust normalization
-            hand_crafted_text_features = hand_crafted_text_features / (hand_crafted_text_features.norm(dim=-1, keepdim=True) + 1e-6)
+        # Hand-crafted prompts (for MI Loss, CAD, and Text Distillation)
+        hand_crafted_text_features = None
+        need_hand_crafted = (
+            (self.training and getattr(self.args, 'lambda_mi', 0) > 0) or
+            getattr(self.args, 'lambda_cad', 0) > 0 or
+            getattr(self.args, 'lambda_text', 0) > 0
+        )
+        if need_hand_crafted:
+            hand_crafted_prompts = self.hand_crafted_prompt_embeddings
+            tokenized_hand_crafted_prompts = self.tokenized_hand_crafted_prompts.to(hand_crafted_prompts.device)
+            
+            with torch.no_grad():
+                hand_crafted_text_features = self.text_encoder(hand_crafted_prompts, tokenized_hand_crafted_prompts)
+                hand_crafted_text_features = hand_crafted_text_features.float()
+                hand_crafted_text_features = hand_crafted_text_features / (hand_crafted_text_features.norm(dim=-1, keepdim=True) + 1e-6)
 
         ################# MoCo Updates ###################
         moco_logits = None
         if self.training and hasattr(self.args, 'use_moco') and self.args.use_moco:
             with torch.no_grad():
                 self._momentum_update_key_encoder()
-                k_video_features = self.forward_momentum(image_face, image_body)
+                k_video_features = self.forward_momentum(image_face, image_body, image_context)
             
             # Compute MoCo Logits
             # Positive logits: similarity between query and key
@@ -408,31 +412,35 @@ class GenerateModel(nn.Module):
 
             self._dequeue_and_enqueue(k_video_features)
 
+        ################# Spatial Patches for CAD (PromptCAD) ###################
+        patch_features = None
+        if getattr(self.args, 'lambda_cad', 0) > 0:
+            # Extract 196 spatial patch tokens from face stream for spatial attention distillation
+            _, face_patches = self.image_encoder(image_face_reshaped.type(self.dtype), return_patches=True)
+            patch_features = face_patches.float()
+            patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
+
         ################# Classification ###################
-        if self.is_multilabel:
-            # ===== Q2L Multi-Label Path (EMOTIC) =====
-            # Lazy-init Q2L label queries from CLIP text features
+        if getattr(self.args, 'use_q2l', False) and self.is_multilabel:
+            # ===== Q2L Multi-Label Path (Optional) =====
             if not self._q2l_initialized:
                 self.init_q2l_from_text()
-            
-            # Q2L: label queries cross-attend to visual features → (B, 26) logits
-            output = self.q2l_head(video_features)  # (B, num_classes) raw logits for sigmoid
-            
+            output = self.q2l_head(video_features)
         else:
-            # ===== Single-Label Path (RAER, CAER, DAiSEE, etc.) =====
+            # ===== Standard CLIP Prompt Alignment (Single-Label & Multi-Label) =====
             if self.is_ensemble:
                 # Reshape text features for ensembling: (C*P, D) -> (C, P, D)
-                text_features = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
-                # Normalize again just in case (optional but safe) - Robust version
-                text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
+                text_features_ens = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
+                text_features_ens = text_features_ens / (text_features_ens.norm(dim=-1, keepdim=True) + 1e-6)
                 
                 # Compute logits per prompt: (B, D) @ (D, P, C) -> (B, P, C)
-                logits = torch.einsum('bd,cpd->bcp', video_features, text_features)
+                logits = torch.einsum('bd,cpd->bcp', video_features, text_features_ens)
                 
                 # Average the logits across the prompts for each class
                 output = torch.mean(logits, dim=2) / self.args.temperature
-                
             else:
-                output = video_features @ text_features.t() / self.args.temperature
+                output = (video_features @ text_features.t()) / self.args.temperature
 
+        if getattr(self.args, 'lambda_cad', 0) > 0:
+            return output, text_features, hand_crafted_text_features, moco_logits, patch_features
         return output, text_features, hand_crafted_text_features, moco_logits

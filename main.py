@@ -9,6 +9,8 @@ import time
 # Suppress OpenCV and FFmpeg warnings
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 os.environ["OPENCV_FFMPEG_DEBUG_LOG_LEVEL"] = "0"
+# Avoid CUDA memory fragmentation
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import matplotlib
 import numpy as np
@@ -107,6 +109,12 @@ loss_group.add_argument('--mask-ratio', type=float, default=0.3, help='Ratio of 
 # NEW LDAM ARGS
 loss_group.add_argument('--ldam-max-m', type=float, default=0.5, help='Max margin for LDAM Loss.')
 loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling factor for LDAM Loss. s=30 works well with CLIP cosine-sim outputs (proven: 73.76%% UAR on RAER). Lower values (e.g. s=3) produce weak gradients.')
+# PromptCAD (TCSVT 2026) Args
+loss_group.add_argument('--lambda-cad', type=float, default=0.0, help='Weight for Concept-guided Attention Distillation (CAD) loss from PromptCAD.')
+loss_group.add_argument('--lambda-text', type=float, default=0.0, help='Weight for Text Prototype Distillation loss from PromptCAD.')
+loss_group.add_argument('--use-cgr', action='store_true', help='Use Concept Generation & Refinement (K-means clustering) for prototypes.')
+loss_group.add_argument('--use-mpi', action='store_true', help='Use Multi-Perspective Self-Attention Pooling during inference.')
+loss_group.add_argument('--use-q2l', action='store_true', help='Enable experimental Q2L Multi-Label Head (off by default).')
 
 # --- Model & Input ---
 model_group = parser.add_argument_group('Model & Input', 'Parameters for model architecture and data handling')
@@ -272,6 +280,22 @@ def run_training(args: argparse.Namespace) -> None:
 
     mi_criterion = MILoss().to(args.device) if args.lambda_mi > 0 else None
     dc_criterion = DCLoss().to(args.device) if args.lambda_dc > 0 else None
+    
+    # PromptCAD (TCSVT 2026) Losses
+    from utils.loss import ConceptAttentionDistillationLoss, TextDistillationLoss
+    cad_criterion = ConceptAttentionDistillationLoss(tau=0.07).to(args.device) if getattr(args, 'lambda_cad', 0) > 0 else None
+    text_distill_criterion = TextDistillationLoss().to(args.device) if getattr(args, 'lambda_text', 0) > 0 else None
+
+    # Load/Extract CGR concept prototypes if needed
+    concept_prototypes = None
+    if getattr(args, 'use_cgr', False) or getattr(args, 'lambda_cad', 0) > 0 or getattr(args, 'lambda_text', 0) > 0:
+        try:
+            from utils.concept_prototypes import get_dataset_concept_prototypes
+            print(f"=> Extracting Concept Prototypes via K-means clustering (CGR) for {args.dataset}...")
+            concept_prototypes = get_dataset_concept_prototypes(args.dataset, clip_model, num_clusters=5, device=args.device)
+            print(f"=> Generated {concept_prototypes.shape[0]} concept prototypes of dim {concept_prototypes.shape[1]}")
+        except Exception as e:
+            print(f"=> Warning: Could not generate concept prototypes via CGR: {e}")
 
     recorder = RecorderMeter(args.epochs)
     
@@ -383,6 +407,9 @@ def run_training(args: argparse.Namespace) -> None:
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
+                    cad_criterion=cad_criterion, lambda_cad=getattr(args, 'lambda_cad', 0.0),
+                    text_distill_criterion=text_distill_criterion, lambda_text=getattr(args, 'lambda_text', 0.0),
+                    concept_prototypes=concept_prototypes,
                     mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp, mi_ramp_type=args.mi_ramp_type,
                     dc_warmup=args.dc_warmup, dc_ramp=args.dc_ramp, 
                     use_amp=args.use_amp, grad_clip=args.grad_clip, mixup_alpha=args.mixup_alpha,

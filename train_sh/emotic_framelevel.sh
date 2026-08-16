@@ -34,18 +34,19 @@ python main.py \
     --use-amp \
     --grad-clip 1.0 \
     --optimizer AdamW \
-    --lr 2e-5 \
+    --loss-type asl \
+    --lr 3e-5 \
     --lr-image-encoder 1e-6 \
     --lr-prompt-learner 2e-4 \
-    --lr-adapter 1e-4 \
-    --weight-decay 0.005 \
+    --lr-adapter 3e-5 \
+    --weight-decay 0.01 \
     --momentum 0.9 \
     --milestones 15 30 \
     --gamma 0.1 \
-    --loss-type masked_asl \
-    --mask-ratio 0.3 \
-    --lambda_mi 0.1 \
+    --lambda_mi 0.05 \
     --lambda_dc 0.0 \
+    --use-cgr \
+    --contexts-number 16 \
     --text-type prompt_ensemble \
     --num-segments 1 \
     --temporal-layers 1 \

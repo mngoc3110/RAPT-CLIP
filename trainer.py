@@ -1,6 +1,7 @@
 # trainer.py
 import logging
 import torch
+import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import confusion_matrix, average_precision_score
 from tqdm import tqdm
@@ -25,22 +26,59 @@ class ModelEMA:
                     self.shadow[name] = self.shadow[name].to(param.device)
                 self.shadow[name].mul_(self.decay).add_(param.data, alpha=1.0 - self.decay)
 
+    @torch.no_grad()
     def apply(self, model):
         self.backup = {name: p.clone() for name, p in model.named_parameters() if name in self.shadow}
         for name, param in model.named_parameters():
             if name in self.shadow:
                 param.data.copy_(self.shadow[name])
 
+    @torch.no_grad()
     def restore(self, model):
         for name, param in model.named_parameters():
             if name in self.backup:
                 param.data.copy_(self.backup[name])
+        self.backup = {}  # Clear backup to free GPU memory immediately
+
+def self_attention_pooling(perspective_features, tau=0.07):
+    """
+    Multi-Perspective Self-Attention Pooling from PromptCAD (TCSVT 2026, Eq. 12-14).
+    Dynamically aggregates features across multiple views/perspectives via learned attention.
+    
+    Args:
+        perspective_features: (M, B, D) or list of M tensors (B, D)
+        tau (float): Temperature for attention sharpness (Default: 0.07)
+    Returns:
+        f_agg: (B, D) aggregated feature
+    """
+    if isinstance(perspective_features, list):
+        perspective_features = torch.stack(perspective_features, dim=0)  # (M, B, D)
+    
+    M, B, D = perspective_features.shape
+    feats_norm = perspective_features / (perspective_features.norm(dim=-1, keepdim=True) + 1e-6)
+    
+    # 1. Global context query q = 1/M \sum f_i
+    q = feats_norm.mean(dim=0)  # (B, D)
+    q_norm = q / (q.norm(dim=-1, keepdim=True) + 1e-6)
+    
+    # 2. Attention weights \alpha_i = softmax( \tau * cos(f_i, q) )
+    cos_sim = torch.einsum('mbd,bd->mb', feats_norm, q_norm) / tau
+    alpha = F.softmax(cos_sim, dim=0).unsqueeze(-1)  # (M, B, 1)
+    
+    # 3. Aggregated feature f_agg = \sum \alpha_i * f_i
+    f_agg = (alpha * feats_norm).sum(dim=0)
+    f_agg = f_agg / (f_agg.norm(dim=-1, keepdim=True) + 1e-6)
+    return f_agg
+
 
 class Trainer:
     """A class that encapsulates the training and validation logic."""
-    def __init__(self, model, criterion, optimizer, scheduler, device,log_txt_path, 
+    def __init__(self, model, criterion, optimizer, scheduler, device, log_txt_path, 
                  mi_criterion=None, lambda_mi=0, 
                  dc_criterion=None, lambda_dc=0,
+                 cad_criterion=None, lambda_cad=0,
+                 text_distill_criterion=None, lambda_text=0,
+                 concept_prototypes=None,
                  mi_warmup=0, mi_ramp=0, mi_ramp_type='ramp_up',
                  dc_warmup=0, dc_ramp=0, use_amp=False, grad_clip=1.0, mixup_alpha=0.0,
                  use_ldl=False, ldl_warmup=0):
@@ -55,6 +93,11 @@ class Trainer:
         self.lambda_mi = lambda_mi
         self.dc_criterion = dc_criterion
         self.lambda_dc = lambda_dc
+        self.cad_criterion = cad_criterion
+        self.lambda_cad = lambda_cad
+        self.text_distill_criterion = text_distill_criterion
+        self.lambda_text = lambda_text
+        self.concept_prototypes = concept_prototypes.to(device) if concept_prototypes is not None else None
         self.mi_warmup = mi_warmup
         self.mi_ramp = mi_ramp
         self.mi_ramp_type = mi_ramp_type
@@ -65,7 +108,7 @@ class Trainer:
         self.mixup_alpha = mixup_alpha
         self.use_ldl = use_ldl
         self.ldl_warmup = ldl_warmup
-        print(f"DEBUG: Trainer initialized with use_ldl={use_ldl}, ldl_warmup={ldl_warmup}")
+        print(f"DEBUG: Trainer initialized with use_ldl={use_ldl}, ldl_warmup={ldl_warmup}, lambda_cad={lambda_cad}, lambda_text={lambda_text}")
         
         # Initialize ModelEMA
         self.ema = ModelEMA(self.model, decay=0.999)
@@ -123,6 +166,8 @@ class Trainer:
         mi_losses = AverageMeter('MI Loss', ':.4e')
         dc_losses = AverageMeter('DC Loss', ':.4e')
         moco_losses = AverageMeter('MoCo Loss', ':.4e')
+        cad_losses = AverageMeter('CAD Loss', ':.4e')
+        text_losses = AverageMeter('TextDistill Loss', ':.4e')
         war_meter = AverageMeter('WAR', ':6.2f')
         
         # Lists to store predictions for UAR calculation
@@ -155,7 +200,7 @@ class Trainer:
             if hasattr(self.model, 'args') and hasattr(self.model.args, 'use_moco') and self.model.args.use_moco:
                 moco_weight = 1.0
                 
-            weight_msg = f"--- Epoch {epoch_str}: MI={mi_weight:.4f}, DC={dc_weight:.4f}, LDL_Wt={ldl_weight:.1f}, MoCo={moco_weight:.1f} ---"
+            weight_msg = f"--- Epoch {epoch_str}: MI={mi_weight:.4f}, DC={dc_weight:.4f}, LDL_Wt={ldl_weight:.1f}, MoCo={moco_weight:.1f}, CAD={self.lambda_cad:.2f}, TextDistill={self.lambda_text:.2f} ---"
             print(weight_msg)
             with open(self.log_txt_path, 'a') as f:
                 f.write(weight_msg + '\n')
@@ -178,7 +223,6 @@ class Trainer:
                 # DEBUG: Check for NaN in inputs
                 if torch.isnan(images_face).any() or torch.isinf(images_face).any():
                     print(f"\n[CRITICAL ERROR] NaN/Inf detected in images_face at batch {i}!")
-                    # raise ValueError("Input images_face contains NaN")
                 
                 images_face = images_face.to(self.device)
                 images_body = images_body.to(self.device)
@@ -214,15 +258,20 @@ class Trainer:
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     # Forward pass
                     if images_context is not None:
-                        output, learnable_text_features, hand_crafted_text_features, moco_logits = self.model(images_face, images_body, images_context)
+                        res_model = self.model(images_face, images_body, images_context)
                     else:
-                        output, learnable_text_features, hand_crafted_text_features, moco_logits = self.model(images_face, images_body)
+                        res_model = self.model(images_face, images_body)
+                    
+                    if len(res_model) == 5:
+                        output, learnable_text_features, hand_crafted_text_features, moco_logits, patch_features = res_model
+                    else:
+                        output, learnable_text_features, hand_crafted_text_features, moco_logits = res_model
+                        patch_features = None
                     
                     # DEBUG: Check model output for NaN
                     if torch.isnan(output).any():
                         print(f"\n[CRITICAL ERROR] Model output contains NaN at batch {i}!")
                         print(f"  Input Min/Max: {images_face.min().item():.4f} / {images_face.max().item():.4f}")
-                        # Check intermediates if possible or just break
                         
                     # For MI and DC losses, if using prompt ensembling, average the learnable_text_features
                     processed_learnable_text_features = learnable_text_features
@@ -233,15 +282,9 @@ class Trainer:
                         processed_learnable_text_features = learnable_text_features.view(num_classes, num_prompts_per_class, -1).mean(dim=1)
 
                     # Calculate loss
-                    # Check if we should use LDL (after warmup) or fallback to CE
                     current_criterion = self.criterion
                     if self.use_ldl and int(epoch_str) < self.ldl_warmup:
-                         # Fallback to standard CE during warmup if using LDL wrapper
-                         # But self.criterion is SemanticLDLLoss. We need a simple CE.
-                         # Assuming we can just compute CE here or use a separate criterion.
-                         # Simpler: SemanticLDLLoss already handles temperature. If we want HARD labels,
-                         # we can just use F.cross_entropy.
-                         current_criterion = torch.nn.CrossEntropyLoss()
+                          current_criterion = torch.nn.CrossEntropyLoss()
                     
                     if isinstance(current_criterion, SemanticLDLLoss):
                         if is_train and self.mixup_alpha > 0:
@@ -250,7 +293,6 @@ class Trainer:
                         else:
                             classification_loss = current_criterion(output, target, processed_learnable_text_features)
                     else:
-                        # Standard CE or LSR
                         if is_train and self.mixup_alpha > 0:
                             classification_loss = lam * current_criterion(output, target) + (1 - lam) * current_criterion(output, target_b)
                         else:
@@ -261,34 +303,52 @@ class Trainer:
                         print(f"\n[DEBUG] Batch 0 Check:")
                         print(f"  Logits Shape: {output.shape}")
                         print(f"  Target Shape: {target.shape}")
-                        # Move to CPU first to avoid triggering CUDA sync errors on bad targets
                         target_cpu = target.detach().cpu()
                         print(f"  Target Min/Max: {target_cpu.min().item()} / {target_cpu.max().item()}")
                         print(f"  Unique Targets: {target_cpu.unique().tolist()}")
                         logits_np = output[:2].detach().cpu().numpy()
                         print(f"  Logits (first 2): {logits_np}")
                         print(f"  Targets (first 2): {target_cpu[:2].numpy()}")
-                        print(f"  CE/LDL Loss: {classification_loss.item():.6f}")
+                        print(f"  Classification Loss: {classification_loss.item():.6f}")
                         if hasattr(self.model, 'args') and hasattr(self.model.args, 'temperature'):
                              print(f"  Model Temperature: {self.model.args.temperature}")
 
                     loss = classification_loss
 
+                    # MI Loss
                     if is_train and self.mi_criterion is not None and hand_crafted_text_features is not None:
                         mi_loss = self.mi_criterion(processed_learnable_text_features, hand_crafted_text_features)
                         loss += mi_weight * mi_loss
                         mi_losses.update(mi_loss.item(), target.size(0))
 
+                    # DC Loss
                     if is_train and self.dc_criterion is not None:
                         dc_loss = self.dc_criterion(processed_learnable_text_features)
                         loss += dc_weight * dc_loss
                         dc_losses.update(dc_loss.item(), target.size(0))
 
+                    # MoCo Loss
                     if is_train and moco_logits is not None:
                          moco_target = torch.zeros(moco_logits.size(0), dtype=torch.long).to(self.device)
                          moco_loss = torch.nn.CrossEntropyLoss()(moco_logits, moco_target)
                          loss += moco_loss
                          moco_losses.update(moco_loss.item(), target.size(0))
+
+                    # Concept-guided Attention Distillation (CAD) Loss
+                    if is_train and self.cad_criterion is not None and patch_features is not None:
+                        ref_concepts = self.concept_prototypes if self.concept_prototypes is not None else hand_crafted_text_features
+                        if ref_concepts is not None:
+                            cad_loss = self.cad_criterion(patch_features, processed_learnable_text_features, ref_concepts, target)
+                            loss += self.lambda_cad * cad_loss
+                            cad_losses.update(cad_loss.item(), target.size(0))
+
+                    # Text Prototype Distillation Loss
+                    if is_train and self.text_distill_criterion is not None:
+                        ref_concepts = self.concept_prototypes if self.concept_prototypes is not None else hand_crafted_text_features
+                        if ref_concepts is not None:
+                            text_loss = self.text_distill_criterion(processed_learnable_text_features, ref_concepts)
+                            loss += self.lambda_text * text_loss
+                            text_losses.update(text_loss.item(), target.size(0))
 
                 if is_train:
                     self.optimizer.zero_grad()
@@ -374,24 +434,35 @@ class Trainer:
         all_preds = torch.cat(all_preds_list)
         all_targets = torch.cat(all_targets_list)
         
+        # Get class names for dataset
+        from utils.metrics_logger import format_multilabel_matrix_report, format_confusion_matrix_report, get_dataset_class_names
+        dataset_name = getattr(self.model.args, 'dataset', 'Unknown') if hasattr(self.model, 'args') else 'Unknown'
+        num_classes = all_targets.shape[1] if all_targets.dim() > 1 else (int(all_targets.max().item() + 1))
+        class_names = get_dataset_class_names(dataset_name, num_classes=num_classes)
+
         prefix = f"{mode_str} Epoch: [{epoch_str}]"
         if all_targets.dtype == torch.float32: # Multi-label
-            map_score = average_precision_score(all_targets.numpy(), all_preds.numpy(), average='macro') * 100
+            report_str, metrics_dict = format_multilabel_matrix_report(all_targets, all_preds, class_names=class_names)
+            map_score = metrics_dict['macro_map']
+            
             logging.info(f"{prefix} * mAP: {map_score:.3f}")
+            print(f"\n{report_str}")
             with open(self.log_txt_path, 'a') as f:
                 f.write('Current mAP: {map_score:.3f}'.format(map_score=map_score) + '\n')
+                f.write(report_str + '\n')
             return map_score, map_score, losses.avg, None
         else: # Single-label
-            cm = confusion_matrix(all_targets.numpy(), all_preds.numpy())
-            war = war_meter.avg 
-            
-            class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
-            uar = np.nanmean(class_acc) * 100
+            report_str, metrics_dict = format_confusion_matrix_report(all_targets, all_preds, class_names=class_names)
+            war = metrics_dict['war']
+            uar = metrics_dict['uar']
+            cm = metrics_dict['confusion_matrix']
 
             logging.info(f"{prefix} * WAR: {war:.3f} | UAR: {uar:.3f}")
+            print(f"\n{report_str}")
             with open(self.log_txt_path, 'a') as f:
                 f.write('Current WAR: {war:.3f}'.format(war=war) + '\n')
                 f.write('Current UAR: {uar:.3f}'.format(uar=uar) + '\n')
+                f.write(report_str + '\n')
             return war, uar, losses.avg, cm
         
     def train_epoch(self, train_loader, epoch_num):
@@ -400,6 +471,7 @@ class Trainer:
         torch.cuda.empty_cache()
         return res
     
+    @torch.no_grad()
     def validate(self, val_loader, epoch_num_str="Final"):
         """Executes one full validation run."""
         has_ema = hasattr(self, 'ema') and self.ema is not None
