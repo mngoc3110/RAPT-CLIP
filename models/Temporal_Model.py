@@ -91,7 +91,7 @@ class Temporal_Transformer_Mean(nn.Module):
         dropout=0.1
         self.num_patches = num_patches
         self.input_dim = input_dim
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, input_dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, input_dim) * 0.02)
         self.temporal_transformer = Transformer(input_dim, depth, heads, dim_head, mlp_dim, dropout)
 
     def forward(self, x):
@@ -111,9 +111,9 @@ class Temporal_Transformer_Cls_v6(nn.Module):
         dropout=0.1
         self.num_patches = num_patches
         self.input_dim = input_dim
-        self.cls_token_face = nn.Parameter(torch.randn(1, 1, input_dim))
-        self.cls_token_body = nn.Parameter(torch.randn(1, 1, input_dim))
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches+1, input_dim))
+        self.cls_token_face = nn.Parameter(torch.randn(1, 1, input_dim) * 0.02)
+        self.cls_token_body = nn.Parameter(torch.randn(1, 1, input_dim) * 0.02)
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches+1, input_dim) * 0.02)
         self.temporal_transformer = Transformer(input_dim, depth, heads, dim_head, mlp_dim, dropout)
 
     def forward(self,x,tag):  #8,16,512
