@@ -147,9 +147,14 @@ class GenerateModel(nn.Module):
                                                      dim_head=64)
 
         # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
-        object.__setattr__(self, 'clip_model_', clip_model)
-        
         self.project_fc = nn.Linear(in_dim, 512)
+        # Initialize project_fc as an average projection of input streams to preserve CLIP visual features from step 0
+        with torch.no_grad():
+            num_streams = 3 if self.use_context else 2
+            eye_blocks = [torch.eye(512) / float(num_streams) for _ in range(num_streams)]
+            self.project_fc.weight.copy_(torch.cat(eye_blocks, dim=1))
+            if self.project_fc.bias is not None:
+                self.project_fc.bias.zero_()
 
         # Fusion Selection: gfi (Gated Feature Integration) or cmaf (Cross-Modal Attention Fusion)
         self.fusion_type = getattr(args, 'fusion_type', 'cmaf')
@@ -164,6 +169,12 @@ class GenerateModel(nn.Module):
             )
         else:
             self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context, context_gating=self.is_multilabel)
+
+        # ==================== Multi-Label Class Bias (EMOTIC) ====================
+        if self.is_multilabel:
+            num_cls = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
+            self.class_bias = nn.Parameter(torch.full((num_cls,), -2.5))
+            print(f"=> Initialized learnable class bias (-2.5) for {num_cls} multi-label classes")
 
         # ==================== Q2L Multi-Label Head (EMOTIC) ====================
         if self.is_multilabel:
@@ -440,6 +451,9 @@ class GenerateModel(nn.Module):
                 output = torch.mean(logits, dim=2) / self.args.temperature
             else:
                 output = (video_features @ text_features.t()) / self.args.temperature
+
+            if hasattr(self, 'class_bias') and self.is_multilabel:
+                output = output + self.class_bias
 
         if getattr(self.args, 'lambda_cad', 0) > 0:
             return output, text_features, hand_crafted_text_features, moco_logits, patch_features

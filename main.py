@@ -332,6 +332,9 @@ def run_training(args: argparse.Namespace) -> None:
             ]
             if hasattr(model, 'cmaf'):
                 optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
+            if hasattr(model, 'class_bias') and model.class_bias is not None:
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": args.lr})
+                print("=> Added learnable class_bias to optimizer")
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
             # Q2L Multi-Label Head (EMOTIC)

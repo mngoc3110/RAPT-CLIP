@@ -153,8 +153,7 @@ class CrossModalAttentionFusion(nn.Module):
             context_out = self.norm_c(context_cross.squeeze(1) + context_feat)
 
             if self.context_gating:
-                # ===== Context-Priority Gating =====
-                # Combine static prior + input-dependent adaptive weights
+                # ===== Feature-Preserving Context-Priority Gating =====
                 static_weights = F.softmax(self.modality_importance, dim=0)  # (3,)
                 
                 # Adaptive gate: depends on the actual features in this batch
@@ -164,13 +163,11 @@ class CrossModalAttentionFusion(nn.Module):
                 # Mix static prior (0.3) + adaptive (0.7) for stability
                 combined_weights = 0.3 * static_weights.unsqueeze(0) + 0.7 * adaptive_weights  # (B, 3)
                 
-                # Weighted sum per modality, then project back to 1536-d for compatibility
-                weighted_feat = (combined_weights[:, 0:1] * face_out + 
-                                combined_weights[:, 1:2] * body_out + 
-                                combined_weights[:, 2:3] * context_out)  # (B, dim=512)
-                
-                # Project back to expected 1536-d output
-                return self.gate_proj(weighted_feat)  # (B, 1536)
+                # Directly scale each modality (preserving 86%+ residual connections and 1536-d dimension)
+                w_face = combined_weights[:, 0:1] * face_out * 3.0
+                w_body = combined_weights[:, 1:2] * body_out * 3.0
+                w_context = combined_weights[:, 2:3] * context_out * 3.0
+                return torch.cat((w_face, w_body, w_context), dim=-1)  # (B, 1536)
             else:
                 return torch.cat((face_out, body_out, context_out), dim=-1)
 
