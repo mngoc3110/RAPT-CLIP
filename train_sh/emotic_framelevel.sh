@@ -52,6 +52,8 @@ python main.py \
     --temporal-layers 1 \
     --fusion-type cmaf \
     --use-context \
+    --crop-body \
+    --mask-context-body \
     --modality-dropout 0.3 \
     --drop-path-rate 0.15 \
     --duration 1 \
