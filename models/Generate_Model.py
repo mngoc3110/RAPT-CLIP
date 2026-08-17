@@ -366,12 +366,16 @@ class GenerateModel(nn.Module):
 
         # Face Part
         image_face_reshaped = image_face.contiguous().view(-1, c, h, w)
-        image_face_features = self.image_encoder(image_face_reshaped.type(self.dtype))
-        image_face_features = self.face_adapter(image_face_features) # Apply EAA
+        # Extract feature from modalities
+        face_feat = self.image_encoder(image_face_reshaped.type(self.dtype))
+        if torch.isnan(face_feat).any(): print("[DEBUG] NaN detected in face_feat from image_encoder!")
+        image_face_features = self.face_adapter(face_feat) # Apply EAA
         
         # Body Part
         image_body_reshaped = image_body.contiguous().view(-1, c, h, w)
-        image_body_features = self.image_encoder(image_body_reshaped.type(self.dtype))
+        body_feat = self.image_encoder(image_body_reshaped.type(self.dtype))
+        if torch.isnan(body_feat).any(): print("[DEBUG] NaN detected in body_feat from image_encoder!")
+        image_body_features = body_feat
 
         # Context Part
         if self.use_context:
@@ -397,9 +401,14 @@ class GenerateModel(nn.Module):
         fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
         video_features = self.unified_temporal_net(fused_frame_features)
 
+        if torch.isnan(video_features).any(): print("[DEBUG] NaN detected after CMAF!")
+            
         video_features = self.project_fc(video_features)
+        if torch.isnan(video_features).any(): print("[DEBUG] NaN detected after project_fc!")
+        
         # Robust normalization to avoid NaN on MPS
         video_features = video_features / (video_features.norm(dim=-1, keepdim=True) + 1e-6)
+        if torch.isnan(video_features).any(): print("[DEBUG] NaN detected after video_features normalization!")
         
         # Save video features for feature-level knowledge distillation
         self.last_video_features = video_features.detach()
@@ -414,6 +423,8 @@ class GenerateModel(nn.Module):
             text_features = self.text_encoder(prompts, tokenized_prompts)
             text_features = text_features.float()  # Ensure float32
             text_features = text_features / (text_features.norm(dim=-1, keepdim=True) + 1e-6)
+            
+        if torch.isnan(text_features).any(): print("[DEBUG] NaN detected after text_encoder!")
 
         # Hand-crafted prompts (for MI Loss, CAD, and Text Distillation)
         hand_crafted_text_features = None
@@ -480,7 +491,10 @@ class GenerateModel(nn.Module):
                 output = (video_features @ text_features.t()) / self.args.temperature
 
             if hasattr(self, 'class_bias') and self.is_multilabel:
+                if torch.isnan(self.class_bias).any(): print("[DEBUG] class_bias contains NaN!")
                 output = output + self.class_bias
+                
+        if torch.isnan(output).any(): print("[DEBUG] NaN detected in final output!")
 
         if getattr(self.args, 'lambda_cad', 0) > 0:
             return output, text_features, hand_crafted_text_features, moco_logits, patch_features

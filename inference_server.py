@@ -31,8 +31,8 @@ from utils.builders import build_model, get_class_info
 CHECKPOINT_PATH = os.path.join(
     os.path.dirname(__file__),
     "outputs",
-    "RAER-ramp-down",
-    "model_best_slim.pth"
+    "RAER-FrameLevelFusion-[06-07]-[03:06]",
+    "model_best.pth"
 )
 
 CLASS_LABELS = ["Neutral", "Enjoyment", "Confusion", "Fatigue", "Distraction"]
@@ -60,6 +60,8 @@ def get_inference_args():
         crop_body=False,
         temperature=0.07,
         text_type="prompt_ensemble",
+        use_context=True,
+        fusion_type="cmaf",
         use_moco=False,
         moco_k=2048,
         moco_m=0.999,
@@ -105,20 +107,24 @@ class RAPTCLIPRealtimeWrapper(nn.Module):
         img_f = image_face[:, 0, :, :, :].view(-1, c, h, w)
         img_b = image_body[:, 0, :, :, :].view(-1, c, h, w)
         
-        # Trích xuất đặc trưng ViT đúng 1 LẦN
+        # Extract features (T=1)
         face_feat = base.image_encoder(img_f.type(base.dtype))
         face_feat = base.face_adapter(face_feat) # EAA
         body_feat = base.image_encoder(img_b.type(base.dtype))
         
-        # Nhân bản đặc trưng vector (rất nhẹ) lên 16 lần (T=16)
-        face_feat = face_feat.unsqueeze(1).repeat(1, self.num_segments, 1)
-        body_feat = body_feat.unsqueeze(1).repeat(1, self.num_segments, 1)
+        # Context is just body crop in this simplified inference
+        context_feat = body_feat
         
-        # Temporal Net
-        vid_face = base.temporal_net(face_feat)
-        vid_body = base.temporal_net_body(body_feat)
-        
-        vid_feat = torch.cat((vid_face, vid_body), dim=-1)
+        # Frame-level Fusion via CMAF (T=1)
+        if hasattr(base, 'cmaf'):
+            fused_feats = base.cmaf(face_feat, body_feat, context_feat)
+        else:
+            fused_feats = torch.cat((face_feat, body_feat, context_feat), dim=-1)
+            
+        # Nhân bản đặc trưng FUSED (rất nhẹ) lên 16 lần (T=16)
+        fused_feats = fused_feats.unsqueeze(1).repeat(1, self.num_segments, 1)
+            
+        vid_feat = base.unified_temporal_net(fused_feats)
         vid_feat = base.project_fc(vid_feat)
         vid_feat = vid_feat / (vid_feat.norm(dim=-1, keepdim=True) + 1e-6)
         
@@ -199,11 +205,11 @@ async def lifespan(app: FastAPI):
     model = RAPTCLIPRealtimeWrapper(model, num_segments=16)
     
     # Kích hoạt Torch Compile nếu PyTorch >= 2.0 (tăng % tốc độ CPU/GPU)
-    try:
-        model = torch.compile(model)
-        print("🚀 Đã kích hoạt PyTorch 2.0 torch.compile!")
-    except Exception as e:
-        print(f"⚠️ Không dùng được torch.compile (có thể do phiên bản cũ): {e}")
+    # try:
+    #     model = torch.compile(model)
+    #     print("🚀 Đã kích hoạt PyTorch 2.0 torch.compile!")
+    # except Exception as e:
+    #     print(f"⚠️ Không dùng được torch.compile (có thể do phiên bản cũ): {e}")
 
     print("✅ Model loaded successfully!")
     print("=" * 50)
@@ -248,7 +254,7 @@ class AnalyzeResponse(BaseModel):
 
 # ─── Endpoints ─────────────────────────────────────────────
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok", "model_loaded": "model" in model_state}
 
 
