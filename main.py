@@ -343,11 +343,14 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # Fast learning rate for class_bias to absorb ASL dataset-prior shift quickly
+            # class_bias is a FIXED prior from data statistics (log-odds).
+            # Making it learnable with lr=1e-3 causes divergence: frequent classes
+            # (e.g., Engagement at 49.3%) accumulate large gradients that push class_bias
+            # beyond the prior, causing false positives and increasing loss.
+            # The visual features (cosine similarity) will learn the discriminative residual.
             if hasattr(model, 'class_bias'):
-                # 1e-3 allows it to quickly adapt from log-odds to ASL optimal constant
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
-                print("=> Added class_bias to optimizer with lr=1e-3")
+                model.class_bias.requires_grad_(False)
+                print("=> class_bias frozen at log-odds prior (not in optimizer)")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
