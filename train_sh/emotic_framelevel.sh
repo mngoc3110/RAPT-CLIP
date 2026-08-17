@@ -46,11 +46,12 @@ python main.py \
     --lr 2e-5 \
     --lr-image-encoder 1e-6 \
     --lr-prompt-learner 1e-5 \
+    --use-q2l \
     --lr-adapter 3e-5 \
     --weight-decay 0.01 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda_mi 0.05 \
+    --lambda_mi 0.0 \
     --lambda_dc 0.0 \
     --use-cgr \
     --contexts-number 16 \
