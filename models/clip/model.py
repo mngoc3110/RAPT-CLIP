@@ -483,6 +483,10 @@ def build_model(state_dict: dict, drop_path: float = 0.0):
         if key in state_dict:
             del state_dict[key]
 
-    convert_weights(model)
+    # DO NOT force convert weights to float16.
+    # When fine-tuning with PyTorch's AdamW, float16 parameters cause the optimizer's eps (1e-8)
+    # to underflow to 0.0, resulting in division by zero (NaN weights) after a few batches.
+    # We will rely entirely on PyTorch's native AMP (autocast) for mixed precision.
+    # convert_weights(model)
     model.load_state_dict(state_dict)
     return model.eval()
