@@ -366,22 +366,29 @@ class GenerateModel(nn.Module):
 
         # Face Part
         image_face_reshaped = image_face.contiguous().view(-1, c, h, w)
-        # Extract feature from modalities
-        face_feat = self.image_encoder(image_face_reshaped.type(self.dtype))
-        if torch.isnan(face_feat).any(): print("[DEBUG] NaN detected in face_feat from image_encoder!")
+        # Extract feature from modalities safely in float32 to avoid ViT float16 overflow
+        with torch.cuda.amp.autocast(enabled=False):
+            face_feat = self.image_encoder(image_face_reshaped.float())
+            if torch.isnan(face_feat).any(): print("[DEBUG] NaN detected in face_feat from image_encoder!")
+            
         image_face_features = self.face_adapter(face_feat) # Apply EAA
         
         # Body Part
         image_body_reshaped = image_body.contiguous().view(-1, c, h, w)
-        body_feat = self.image_encoder(image_body_reshaped.type(self.dtype))
-        if torch.isnan(body_feat).any(): print("[DEBUG] NaN detected in body_feat from image_encoder!")
+        with torch.cuda.amp.autocast(enabled=False):
+            body_feat = self.image_encoder(image_body_reshaped.float())
+            if torch.isnan(body_feat).any(): print("[DEBUG] NaN detected in body_feat from image_encoder!")
+            
         image_body_features = body_feat
 
         # Context Part
         if self.use_context:
             assert image_context is not None, "image_context must be provided when use_context=True"
             image_context_reshaped = image_context.contiguous().view(-1, c, h, w)
-            image_context_features = self.image_encoder(image_context_reshaped.type(self.dtype))
+            with torch.cuda.amp.autocast(enabled=False):
+                context_feat = self.image_encoder(image_context_reshaped.float())
+                if torch.isnan(context_feat).any(): print("[DEBUG] NaN detected in context_feat from image_encoder!")
+            image_context_features = context_feat
 
         # Frame-Level Fusion (CMAF or GFI)
         if self.fusion_type == 'gfi':
