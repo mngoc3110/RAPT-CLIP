@@ -171,10 +171,19 @@ class GenerateModel(nn.Module):
             self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context, context_gating=self.is_multilabel)
 
         # ==================== Multi-Label Class Bias (EMOTIC) ====================
+        # FIXED (non-learnable) log-odds prior bias per class, computed from dataset statistics.
+        # Making this learnable collapses training to predict class frequency priors.
+        # Formula: log(p / (1-p)) where p = class frequency. Initialized from EMOTIC class frequencies.
+        # This can be overridden via model.set_class_prior(freq_vector) after model construction.
         if self.is_multilabel:
             num_cls = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
-            self.class_bias = nn.Parameter(torch.full((num_cls,), -2.5))
-            print(f"=> Initialized learnable class bias (-2.5) for {num_cls} multi-label classes")
+            # Default: uniform prior matching typical multi-label sparsity (p=0.1 → logit=-2.2)
+            prior_logit = torch.full((num_cls,), -2.2)
+            # Make it a learnable parameter again. ASL loss creates a bias offset that is DIFFERENT
+            # from the dataset prior. If class_bias is fixed, the text embeddings are forced
+            # to learn this bias offset, destroying their semantic meaning (catastrophic forgetting).
+            self.class_bias = nn.Parameter(prior_logit)
+            print(f"=> Initialized FIXED class bias (log-odds prior, p=0.1) for {num_cls} multi-label classes")
 
         # ==================== Q2L Multi-Label Head (EMOTIC) ====================
         if self.is_multilabel:
@@ -195,40 +204,58 @@ class GenerateModel(nn.Module):
             nc = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
             self.register_buffer('label_cooccurrence', torch.zeros(nc, nc))
 
-        # MoCo Initialization
+        # ==================== MoCo Initialization ====================
         if hasattr(args, 'use_moco') and args.use_moco:
             print("=> Initializing MoCoRank...")
-            self.moco_dim = 512
-            self.moco_k = args.moco_k
-            self.moco_m = args.moco_m
-            self.moco_t = args.moco_t
+            self._init_moco(args)
 
-            # Create momentum encoders
-            self.image_encoder_m = copy.deepcopy(self.image_encoder)
-            self.face_adapter_m = copy.deepcopy(self.face_adapter)
-            self.unified_temporal_net_m = copy.deepcopy(self.unified_temporal_net)
-            self.project_fc_m = copy.deepcopy(self.project_fc)
-            
-            if self.fusion_type == 'gfi':
-                self.gate_fc_m = copy.deepcopy(self.gate_fc)
-            else:
-                self.cmaf_m = copy.deepcopy(self.cmaf)
+    def set_class_prior(self, freq_vector: torch.Tensor):
+        """Update the fixed class_bias buffer from actual training data class frequencies.
+        
+        Call this once after model construction, before training.
+        freq_vector: (C,) float tensor with values in [0, 1] = class frequency p_c in training data.
+        bias = log(p / (1-p)), clipped to avoid ±inf.
+        """
+        if hasattr(self, 'class_bias'):
+            freq = freq_vector.clamp(0.005, 0.995)
+            log_odds = torch.log(freq / (1.0 - freq))
+            self.class_bias.data.copy_(log_odds)
+            print(f"=> Updated class_bias (learnable log-odds prior) from training data: min={log_odds.min():.2f}, max={log_odds.max():.2f}")
 
-            # Freeze momentum encoders
-            for param in self.image_encoder_m.parameters(): param.requires_grad = False
-            for param in self.face_adapter_m.parameters(): param.requires_grad = False
-            for param in self.unified_temporal_net_m.parameters(): param.requires_grad = False
-            for param in self.project_fc_m.parameters(): param.requires_grad = False
-            
-            if self.fusion_type == 'gfi':
-                for param in self.gate_fc_m.parameters(): param.requires_grad = False
-            else:
-                for param in self.cmaf_m.parameters(): param.requires_grad = False
+    def _init_moco(self, args):
+        """Initialize MoCo momentum encoders. Called from __init__ when use_moco=True."""
+        self.moco_dim = 512
+        self.moco_k = args.moco_k
+        self.moco_m = args.moco_m
+        self.moco_t = args.moco_t
 
-            # Create queue
-            self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
-            self.queue = nn.functional.normalize(self.queue, dim=0)
-            self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+        # Create momentum encoders
+        self.image_encoder_m = copy.deepcopy(self.image_encoder)
+        self.face_adapter_m = copy.deepcopy(self.face_adapter)
+        self.unified_temporal_net_m = copy.deepcopy(self.unified_temporal_net)
+        self.project_fc_m = copy.deepcopy(self.project_fc)
+        
+        if self.fusion_type == 'gfi':
+            self.gate_fc_m = copy.deepcopy(self.gate_fc)
+        else:
+            self.cmaf_m = copy.deepcopy(self.cmaf)
+
+        # Freeze momentum encoders
+        for param in self.image_encoder_m.parameters(): param.requires_grad = False
+        for param in self.face_adapter_m.parameters(): param.requires_grad = False
+        for param in self.unified_temporal_net_m.parameters(): param.requires_grad = False
+        for param in self.project_fc_m.parameters(): param.requires_grad = False
+        
+        if self.fusion_type == 'gfi':
+            for param in self.gate_fc_m.parameters(): param.requires_grad = False
+        else:
+            for param in self.cmaf_m.parameters(): param.requires_grad = False
+
+        # Create queue
+        self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
+        self.queue = nn.functional.normalize(self.queue, dim=0)
+        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
 
     def init_q2l_from_text(self):
         """Initialize Q2L label queries from hand-crafted CLIP text features.

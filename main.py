@@ -316,32 +316,38 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.temporal_net_body.parameters(), "lr": args.lr},
                 {"params": model.temporal_net_context.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
-                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
+                # {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner}, # FROZEN to prevent ASL collapse
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
                 {"params": model.cross_attn_fb.parameters(), "lr": args.lr},
                 {"params": model.cross_attn_fbc.parameters(), "lr": args.lr}
             ]
+            if hasattr(model, 'class_bias'):
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
+                print("=> Added class_bias to V2 optimizer with lr=1e-3")
         else:
             # V1 Architecture
             optimizer_grouped_parameters = [
                 {"params": model.unified_temporal_net.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
-                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
+                # {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner}, # FROZEN to prevent ASL collapse
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
             ]
             if hasattr(model, 'cmaf'):
                 optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
-            if hasattr(model, 'class_bias') and model.class_bias is not None:
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": args.lr})
-                print("=> Added learnable class_bias to optimizer")
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
             # Q2L Multi-Label Head (EMOTIC)
             if hasattr(model, 'q2l_head'):
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
+            
+            # Fast learning rate for class_bias to absorb ASL dataset-prior shift quickly
+            if hasattr(model, 'class_bias'):
+                # 1e-3 allows it to quickly adapt from log-odds to ASL optimal constant
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
+                print("=> Added class_bias to optimizer with lr=1e-3")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -381,7 +387,10 @@ def run_training(args: argparse.Namespace) -> None:
     if args.scheduler == 'multistep':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma, last_epoch=start_epoch - 1)
     elif args.scheduler == 'cosine':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-7, last_epoch=start_epoch - 1)
+        # Use CosineAnnealingLR (no restarts) for stable CLIP fine-tuning.
+        # CosineAnnealingWarmRestarts would spike the LR at epoch 10, which can destroy
+        # the CLIP text-image alignment learned during the first warmup phase.
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-7, last_epoch=start_epoch - 1)
 
     if args.resume and os.path.isfile(args.resume):
         if 'scheduler' in checkpoint:
@@ -391,22 +400,30 @@ def run_training(args: argparse.Namespace) -> None:
             except Exception as e:
                 print(f"=> Warning: Could not resume scheduler state dict: {e}")
 
-    # ===== Compute and set label co-occurrence matrix for EMOTIC =====
+    # ===== Compute and set label co-occurrence matrix + class prior for EMOTIC =====
     is_multilabel = (args.dataset == "EMOTIC")
     if is_multilabel and hasattr(train_loader.dataset, 'video_list'):
-        print("=> Computing label co-occurrence matrix from training data...")
+        print("=> Computing label statistics from training data...")
         all_labels = []
         for record in train_loader.dataset.video_list:
             if isinstance(record.label, torch.Tensor):
                 all_labels.append(record.label.numpy())
         if all_labels:
             all_labels_np = np.stack(all_labels)  # (N, 26)
+            
+            # 1. Compute and set co-occurrence matrix
             cooccur_matrix = all_labels_np.T @ all_labels_np  # (26, 26)
-            # Normalize to conditional probability P(j|i)
             row_sums = cooccur_matrix.diagonal().copy()
-            row_sums[row_sums == 0] = 1  # avoid division by zero
+            row_sums[row_sums == 0] = 1
             cooccur_matrix = cooccur_matrix / row_sums[:, None]
             model.set_label_cooccurrence(torch.from_numpy(cooccur_matrix).float())
+            
+            # 2. Compute class frequencies and set fixed log-odds prior bias
+            class_freq = all_labels_np.mean(axis=0)  # (26,) - fraction of positives per class
+            freq_tensor = torch.from_numpy(class_freq).float()
+            if hasattr(model, 'set_class_prior'):
+                model.set_class_prior(freq_tensor)
+
 
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
                     mi_criterion=mi_criterion, lambda_mi=args.lambda_mi,

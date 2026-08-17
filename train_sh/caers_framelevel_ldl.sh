@@ -21,13 +21,13 @@ python main.py \
     --mode train \
     --dataset CAER \
     --exper-name CAER-FrameLevelFusion-Optimal \
-    --root-dir /kaggle/input/caer-dataset \
-    --train-annotation /kaggle/input/caer-dataset/train.txt \
-    --val-annotation /kaggle/input/caer-dataset/val.txt \
-    --test-annotation /kaggle/input/caer-dataset/test.txt \
+    --root-dir CAER-S \
+    --train-annotation CAER-S/annotations/train.txt \
+    --val-annotation CAER-S/annotations/validation.txt \
+    --test-annotation CAER-S/annotations/test.txt \
     --clip-path ViT-B/16 \
-    --bounding-box-face /kaggle/input/caer-dataset/face_bboxes.json \
-    --bounding-box-body /kaggle/input/caer-dataset/body_bboxes.json \
+    --bounding-box-face CAER-S/annotations/face_v.json \
+    --bounding-box-body CAER-S/annotations/body_v.json \
     --epochs 30 \
     --batch-size 8 \
     --print-freq 50 \
@@ -43,7 +43,8 @@ python main.py \
     --milestones 10 20 \
     --gamma 0.1 \
     --loss-type ldam \
-    --ldam-s 30.0 \
+    --temperature 0.1 \
+    --ldam-s 5.0 \
     --ldam-max-m 0.5 \
     --lambda_mi 0.1 \
     --lambda_dc 0.1 \

@@ -8,10 +8,18 @@
 # Dataset: EMOTIC (26 classes, multi-label)
 # Features:
 #   - CMAF Fusion (Face + Body + Context)
-#   - BCE Loss / ASL Loss (Multi-label)
+#   - ASL Loss (Multi-label)
 #   - ViT-B/16 Fine-tuned (lr=1e-6)
 #   - Prompt Ensemble (detailed LLM lexicons)
-#   - Modality Dropout (p=0.3)
+#   - Modality Dropout (p=0.1, reduced from 0.3)
+#   - Fixed class bias from training data prior
+#
+# FIXES applied vs original config:
+#   - lr_prompt_learner: 2e-4 → 1e-5
+#     (was causing catastrophic forgetting of CLIP text-image alignment)
+#   - modality_dropout: 0.3 → 0.1 (was too aggressive, destabilizing training)
+#   - scheduler: multistep → cosine (smoother LR decay without sharp drops)
+#   - drop_path_rate: 0.15 → 0.10 (slightly less aggressive stochasticity)
 # ==========================================
 
 export CUDA_VISIBLE_DEVICES=0
@@ -29,20 +37,19 @@ python main.py \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
     --epochs 40 \
-    --batch-size 16 \
+    --batch-size 8 \
     --print-freq 50 \
     --use-amp \
     --grad-clip 1.0 \
     --optimizer AdamW \
     --loss-type asl \
-    --lr 3e-5 \
+    --lr 2e-5 \
     --lr-image-encoder 1e-6 \
-    --lr-prompt-learner 2e-4 \
+    --lr-prompt-learner 1e-5 \
     --lr-adapter 3e-5 \
     --weight-decay 0.01 \
     --momentum 0.9 \
-    --milestones 15 30 \
-    --gamma 0.1 \
+    --scheduler cosine \
     --lambda_mi 0.05 \
     --lambda_dc 0.0 \
     --use-cgr \
@@ -54,7 +61,7 @@ python main.py \
     --use-context \
     --crop-body \
     --mask-context-body \
-    --modality-dropout 0.3 \
-    --drop-path-rate 0.15 \
+    --modality-dropout 0.1 \
+    --drop-path-rate 0.00 \
     --duration 1 \
     --image-size 224
