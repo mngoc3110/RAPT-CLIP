@@ -36,6 +36,9 @@ class FeedForward(nn.Module):
                                  nn.Dropout(dropout),
                                  nn.Linear(hidden_dim, dim),
                                  nn.Dropout(dropout))
+        # Zero-initialize the final projection to preserve CLIP features initially
+        nn.init.constant_(self.net[3].weight, 0.0)
+        nn.init.constant_(self.net[3].bias, 0.0)
 
     def forward(self, x):
         # print(self.net(x))
@@ -51,6 +54,11 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout)) if project_out else nn.Identity()
+        
+        # Zero-initialize to_out to preserve CLIP features across Residual connection
+        if project_out:
+            nn.init.constant_(self.to_out[0].weight, 0.0)
+            nn.init.constant_(self.to_out[0].bias, 0.0)
 
     def forward(self, x):
         # for name, param in self.named_parameters():

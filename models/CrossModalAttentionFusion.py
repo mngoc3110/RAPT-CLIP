@@ -94,7 +94,7 @@ class CrossModalAttentionFusion(nn.Module):
             nn.init.xavier_uniform_(module.in_proj_weight)
             if module.in_proj_bias is not None:
                 nn.init.constant_(module.in_proj_bias, 0.0)
-            nn.init.xavier_uniform_(module.out_proj.weight)
+            nn.init.constant_(module.out_proj.weight, 0.0) # Zero init to preserve CLIP features initially
             nn.init.constant_(module.out_proj.bias, 0.0)
 
     def get_modality_weights(self):

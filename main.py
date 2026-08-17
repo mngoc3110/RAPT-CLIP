@@ -316,7 +316,7 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.temporal_net_body.parameters(), "lr": args.lr},
                 {"params": model.temporal_net_context.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
-                # {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner}, # FROZEN to prevent ASL collapse
+                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
                 {"params": model.cross_attn_fb.parameters(), "lr": args.lr},
@@ -330,7 +330,7 @@ def run_training(args: argparse.Namespace) -> None:
             optimizer_grouped_parameters = [
                 {"params": model.unified_temporal_net.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
-                # {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner}, # FROZEN to prevent ASL collapse
+                {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
             ]
@@ -343,14 +343,13 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # class_bias is a FIXED prior from data statistics (log-odds).
-            # Making it learnable with lr=1e-3 causes divergence: frequent classes
-            # (e.g., Engagement at 49.3%) accumulate large gradients that push class_bias
-            # beyond the prior, causing false positives and increasing loss.
-            # The visual features (cosine similarity) will learn the discriminative residual.
+            # We previously froze class_bias because it diverged due to CMAF random initialization.
+            # Now that CMAF is zero-initialized, we MUST make class_bias learnable.
+            # ASL Loss skews the positive/negative gradient balance. If class_bias is frozen at 
+            # the true data prior, the model will destroy CLIP embeddings to correct the intercept offset.
             if hasattr(model, 'class_bias'):
-                model.class_bias.requires_grad_(False)
-                print("=> class_bias frozen at log-odds prior (not in optimizer)")
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
+                print("=> class_bias is LEARNABLE (lr=1e-3) to absorb ASL intercept offsets.")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -421,11 +420,14 @@ def run_training(args: argparse.Namespace) -> None:
             cooccur_matrix = cooccur_matrix / row_sums[:, None]
             model.set_label_cooccurrence(torch.from_numpy(cooccur_matrix).float())
             
-            # 2. Compute class frequencies and set fixed log-odds prior bias
+            # 2. Compute class frequencies (for logging only)
             class_freq = all_labels_np.mean(axis=0)  # (26,) - fraction of positives per class
-            freq_tensor = torch.from_numpy(class_freq).float()
-            if hasattr(model, 'set_class_prior'):
-                model.set_class_prior(freq_tensor)
+            
+            # ASL Loss requires class_bias to be initialized to 0, NOT log-odds.
+            # Setting to log-odds (-4.9) forces ASL loss to destroy CLIP embeddings.
+            if hasattr(model, 'class_bias'):
+                model.class_bias.data.zero_()
+                print("=> class_bias initialized to ZERO (required for ASL Loss stability)")
 
 
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
