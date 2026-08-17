@@ -103,8 +103,10 @@ class CrossModalAttentionFusion(nn.Module):
             return F.softmax(self.modality_importance, dim=0).detach().cpu().tolist()
         return None
 
+    @torch.cuda.amp.autocast(enabled=False)
     def forward(self, face_feat, body_feat, context_feat=None):
         """
+        Forward pass for CMAF.
         Args:
             face_feat: (B, dim) face features
             body_feat: (B, dim) body features
@@ -115,6 +117,11 @@ class CrossModalAttentionFusion(nn.Module):
                    - 3-stream: (B, 3*dim) = (B, 1536)
                    - 3-stream + context_gating: (B, 3*dim) = (B, 1536)
         """
+        face_feat = face_feat.float()
+        body_feat = body_feat.float()
+        if context_feat is not None:
+            context_feat = context_feat.float()
+            
         if not self.use_context:
             # Reshape to sequence format: (B, 1, dim)
             face_q = face_feat.unsqueeze(1)
