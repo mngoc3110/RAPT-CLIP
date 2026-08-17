@@ -46,7 +46,6 @@ python main.py \
     --lr 2e-5 \
     --lr-image-encoder 1e-6 \
     --lr-prompt-learner 1e-5 \
-    --use-q2l \
     --lr-adapter 3e-5 \
     --weight-decay 0.01 \
     --momentum 0.9 \
@@ -65,4 +64,5 @@ python main.py \
     --modality-dropout 0.1 \
     --drop-path-rate 0.00 \
     --duration 1 \
-    --image-size 224
+    --image-size 224 \
+    --temperature 1.0
