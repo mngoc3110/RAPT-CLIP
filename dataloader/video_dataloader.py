@@ -318,41 +318,49 @@ class VideoDataset(data.Dataset):
                         img_pil = Image.new('RGB', (self.image_size, self.image_size))
 
                 # 2. Key Lookup Strategy for Bounding Box
-                # Construct possible keys to look up in the JSON
-                # Priority 1: Full relative path from dataset root (e.g., 'RAER/train/Neutral/001')
-                # Priority 2: Parent dir + Filename (e.g., 'Neutral/001')
-                
                 # Normalize path separators to forward slash
                 rel_path = record.path.replace('./', '').replace('\\', '/')
-                # Remove extension
-                video_key_full = os.path.splitext(rel_path)[0]
-                
-                frame_key = f"{p}.jpg" # Standard frame key format
-                
-                # Try finding the video key in boxes
+                # Remove root_dir prefix to get relative path
+                if self.root_dir and rel_path.startswith(self.root_dir.replace('\\', '/')):
+                    rel_path = rel_path[len(self.root_dir.replace('\\', '/')):]  .lstrip('/')
+
+                video_key_no_ext = os.path.splitext(rel_path)[0]
+                video_key_with_ext = rel_path  # Keep extension (EMOTIC JSON uses .jpg keys)
+
+                # Try finding the video key in boxes (try both with and without extension)
                 matched_video_key = None
-                
-                # Strategy A: Exact match
-                if video_key_full in self.boxs:
-                    matched_video_key = video_key_full
-                
-                # Strategy B: Suffix match (handle 'dataset/' prefix issues)
-                if matched_video_key is None:
-                    parts = video_key_full.split('/')
+
+                for try_key in [video_key_with_ext, video_key_no_ext]:
+                    if try_key in self.boxs:
+                        matched_video_key = try_key
+                        break
+                    # Strategy B: Suffix match
+                    parts = try_key.split('/')
                     for idx in range(1, len(parts)):
                         sub_key = '/'.join(parts[idx:])
                         if sub_key in self.boxs:
                             matched_video_key = sub_key
                             break
-                
+                    if matched_video_key:
+                        break
+
                 # 3. Retrieve Box
-                if matched_video_key and frame_key in self.boxs[matched_video_key]:
-                    box = self.boxs[matched_video_key][frame_key]
-                
+                # For EMOTIC (single image), the box is stored directly on the key.
+                # For RAER/CAER (video), the box is stored per frame_key.
+                frame_key = f"{p}.jpg"  # Standard frame key format for video datasets
+                box = None
+                if matched_video_key:
+                    entry = self.boxs[matched_video_key]
+                    if isinstance(entry, dict):
+                        # Video dataset: lookup by frame index
+                        if frame_key in entry:
+                            box = entry[frame_key]
+                    elif isinstance(entry, list):
+                        # EMOTIC single-image: box is stored directly as [x1,y1,x2,y2]
+                        box = entry
+
                 # Debug logging for missing boxes (only once per video to avoid spam)
-                if box is None and i == 0 and p == indices[0]: 
-                    # Only log if it's the first frame of the first segment
-                    # print(f"[DEBUG] Missing Box: Video='{video_key_full}', Frame='{frame_key}'. MatchedKey='{matched_video_key}'")
+                if box is None and i == 0 and p == indices[0]:
                     pass
 
                 # 4. Face Detection (Crop)
@@ -364,9 +372,28 @@ class VideoDataset(data.Dataset):
                 # 5. Body Crop & Retrieval
                 img_pil_body = img_pil  # Default to full image
                 body_box = None
-                if matched_video_key and matched_video_key in self.body_boxes:
-                    if frame_key in self.body_boxes[matched_video_key]:
-                        body_box = self.body_boxes[matched_video_key][frame_key]
+                if self.crop_body and hasattr(self, 'body_boxes'):
+                    # Same key lookup logic for body_boxes
+                    matched_body_key = None
+                    for try_key in [video_key_with_ext, video_key_no_ext]:
+                        if try_key in self.body_boxes:
+                            matched_body_key = try_key
+                            break
+                        parts = try_key.split('/')
+                        for idx in range(1, len(parts)):
+                            sub_key = '/'.join(parts[idx:])
+                            if sub_key in self.body_boxes:
+                                matched_body_key = sub_key
+                                break
+                        if matched_body_key:
+                            break
+
+                    if matched_body_key:
+                        entry = self.body_boxes[matched_body_key]
+                        if isinstance(entry, dict) and frame_key in entry:
+                            body_box = entry[frame_key]
+                        elif isinstance(entry, list):
+                            body_box = entry
                 
                 if body_box is not None:
                     left, upper, right, lower = body_box
