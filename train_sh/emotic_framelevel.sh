@@ -36,7 +36,7 @@ python main.py \
     --clip-path ViT-B/16 \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
-    --epochs 40 \
+    --epochs 20 \
     --batch-size 8 \
     --print-freq 50 \
     --grad-clip 1.0 \
@@ -61,8 +61,9 @@ python main.py \
     --use-context \
     --crop-body \
     --mask-context-body \
-    --modality-dropout 0.1 \
-    --drop-path-rate 0.0 \
+    --mixup-alpha 0.2 \
+    --modality-dropout 0.3 \
+    --drop-path-rate 0.15 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07
