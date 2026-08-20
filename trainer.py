@@ -418,13 +418,16 @@ class Trainer:
                     if i % 10 == 0: 
                         try:
                             if is_multilabel:
-                                running_map = average_precision_score(curr_targets, curr_preds, average='macro') * 100
+                                # Binarize targets at 0.5 to handle Mixup soft labels
+                                # (Mixup produces values like 0.991, 0.009 which confuse sklearn)
+                                binary_targets = (curr_targets > 0.5).astype(float)
+                                running_map = average_precision_score(binary_targets, curr_preds, average='macro') * 100
                             else:
                                 cm = confusion_matrix(curr_targets, curr_preds, labels=range(output.shape[1]))
                                 class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)
                                 running_uar = np.nanmean(class_acc) * 100
-                        except:
-                            pass
+                        except Exception as _map_err:
+                            pass  # Silent: metric will update next interval
                 
                 if is_multilabel:
                     pbar.set_postfix({
@@ -450,7 +453,10 @@ class Trainer:
 
         prefix = f"{mode_str} Epoch: [{epoch_str}]"
         if all_targets.dtype == torch.float32: # Multi-label
-            report_str, metrics_dict = format_multilabel_matrix_report(all_targets, all_preds, class_names=class_names)
+            # Binarize train targets if Mixup was applied (soft labels > 0.5 → 1)
+            # Validation targets are always binary so this is a no-op for val
+            eval_targets = (all_targets > 0.5).float() if is_train else all_targets
+            report_str, metrics_dict = format_multilabel_matrix_report(eval_targets, all_preds, class_names=class_names)
             map_score = metrics_dict['macro_map']
             
             logging.info(f"{prefix} * mAP: {map_score:.3f}")
