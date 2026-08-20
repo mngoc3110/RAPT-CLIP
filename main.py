@@ -287,16 +287,8 @@ def run_training(args: argparse.Namespace) -> None:
     cad_criterion = ConceptAttentionDistillationLoss(tau=0.07).to(args.device) if getattr(args, 'lambda_cad', 0) > 0 else None
     text_distill_criterion = TextDistillationLoss().to(args.device) if getattr(args, 'lambda_text', 0) > 0 else None
 
-    # Load/Extract CGR concept prototypes if needed
+    # Concept prototypes are now generated internally in Generate_Model.py (CGR)
     concept_prototypes = None
-    if getattr(args, 'use_cgr', False) or getattr(args, 'lambda_cad', 0) > 0 or getattr(args, 'lambda_text', 0) > 0:
-        try:
-            from utils.concept_prototypes import get_dataset_concept_prototypes
-            print(f"=> Extracting Concept Prototypes via K-means clustering (CGR) for {args.dataset}...")
-            concept_prototypes = get_dataset_concept_prototypes(args.dataset, clip_model, num_clusters=5, device=args.device)
-            print(f"=> Generated {concept_prototypes.shape[0]} concept prototypes of dim {concept_prototypes.shape[1]}")
-        except Exception as e:
-            print(f"=> Warning: Could not generate concept prototypes via CGR: {e}")
 
     recorder = RecorderMeter(args.epochs)
     
@@ -423,11 +415,15 @@ def run_training(args: argparse.Namespace) -> None:
             # 2. Compute class frequencies (for logging only)
             class_freq = all_labels_np.mean(axis=0)  # (26,) - fraction of positives per class
             
-            # ASL Loss requires class_bias to be initialized to 0, NOT log-odds.
-            # Setting to log-odds (-4.9) forces ASL loss to destroy CLIP embeddings.
-            if hasattr(model, 'class_bias'):
-                model.class_bias.data.zero_()
-                print("=> class_bias initialized to ZERO (required for ASL Loss stability)")
+            # We KEEP class_bias as the log-odds prior. 
+            # Do NOT zero it out! If it is zero, CLIP's high initial cosine similarities 
+            # will push p -> 1.0, and ASL's (1-p)^4 focal term will cause gradients to vanish!
+            # Set class_bias from ACTUAL training data frequencies (not uniform -2.2)
+            # This ensures Engagement (49%) gets bias~-0.04, Embarrassment (0.8%) gets bias~-4.82
+            if hasattr(model, 'class_bias') and hasattr(model, 'set_class_prior'):
+                freq_tensor = torch.from_numpy(class_freq).float()
+                model.set_class_prior(freq_tensor)
+                print(f"=> class_bias initialized from ACTUAL training data frequencies.")
 
 
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 

@@ -20,6 +20,13 @@
 #   - modality_dropout: 0.3 → 0.1 (was too aggressive, destabilizing training)
 #   - scheduler: multistep → cosine (smoother LR decay without sharp drops)
 #   - drop_path_rate: 0.15 → 0.10 (slightly less aggressive stochasticity)
+#
+# BUG FIXES (2026-08-20):
+#   - BUG#1: Mixup now works for multi-label float32 targets (was silently disabled)
+#   - BUG#2: ASL loss normalized by B*C (was .sum(), causing 208x gradient explosion)
+#   - BUG#4: class_bias now init from real training freq (was uniform -2.2 for all classes)
+#   - BUG#5: CMAF modality_importance weight 0.7 static (was 0.3, too weak to learn)
+#   - D3: EMA decay 0.99 (was 0.999, too slow to update for 16K sample dataset)
 # ==========================================
 
 export CUDA_VISIBLE_DEVICES=0
@@ -46,7 +53,7 @@ python main.py \
     --lr-image-encoder 1e-6 \
     --lr-prompt-learner 1e-5 \
     --lr-adapter 3e-5 \
-    --weight-decay 0.01 \
+    --weight-decay 0.05 \
     --momentum 0.9 \
     --scheduler cosine \
     --lambda_mi 0.1 \
@@ -61,9 +68,9 @@ python main.py \
     --use-context \
     --crop-body \
     --mask-context-body \
+    --modality-dropout 0.1 \
     --mixup-alpha 0.2 \
-    --modality-dropout 0.3 \
-    --drop-path-rate 0.15 \
+    --drop-path-rate 0.0 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07

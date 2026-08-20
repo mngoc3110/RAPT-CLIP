@@ -110,8 +110,8 @@ class Trainer:
         self.ldl_warmup = ldl_warmup
         print(f"DEBUG: Trainer initialized with use_ldl={use_ldl}, ldl_warmup={ldl_warmup}, lambda_cad={lambda_cad}, lambda_text={lambda_text}")
         
-        # Initialize ModelEMA
-        self.ema = ModelEMA(self.model, decay=0.999)
+        # Initialize ModelEMA (decay=0.99 is better for small datasets like EMOTIC ~16K)
+        self.ema = ModelEMA(self.model, decay=0.99)
         
         if self.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
@@ -139,8 +139,10 @@ class Trainer:
         # Save the image
         torchvision.utils.save_image(tensor, filepath)
 
-    def mixup_data(self, x1, x2, alpha=1.0):
-        '''Returns mixed inputs, pairs of targets, and lambda'''
+    def mixup_data(self, x1, x2, x3=None, alpha=1.0):
+        '''Returns mixed inputs (face, body, optional context), permutation index, and lambda.
+        Supports both single-label (long) and multi-label (float32) targets.
+        '''
         if alpha > 0:
             lam = np.random.beta(alpha, alpha)
         else:
@@ -151,7 +153,10 @@ class Trainer:
 
         mixed_x1 = lam * x1 + (1 - lam) * x1[index, :]
         mixed_x2 = lam * x2 + (1 - lam) * x2[index, :]
-        return mixed_x1, mixed_x2, index, lam
+        mixed_x3 = None
+        if x3 is not None:
+            mixed_x3 = lam * x3 + (1 - lam) * x3[index, :]
+        return mixed_x1, mixed_x2, mixed_x3, index, lam
 
     def _run_one_epoch(self, loader, epoch_str, is_train=True):
         """Runs one epoch of training or validation."""
@@ -248,12 +253,15 @@ class Trainer:
                         print(f"  -> Clamping to valid range to avoid CUDA crash. CHECK YOUR DATALOADER LABELS!")
                         target = target.clamp(0, num_classes_expected - 1)
                 
-                # Apply Mixup (Skip for multi-label / float targets)
-                if is_train and self.mixup_alpha > 0 and target.dtype == torch.long:
-                    images_face, images_body, index, lam = self.mixup_data(images_face, images_body, self.mixup_alpha)
+                # Apply Mixup — supports both single-label (long) and multi-label (float32)
+                _do_mixup = is_train and self.mixup_alpha > 0
+                if _do_mixup:
+                    images_face, images_body, images_context, index, lam = self.mixup_data(
+                        images_face, images_body, images_context, self.mixup_alpha
+                    )
+                    # For multi-label: mix the label vectors too
                     target_b = target[index]
-                else:
-                    self.mixup_alpha = 0  # Temporarily disable mixup for this batch if float target
+                    target = lam * target + (1 - lam) * target_b  # soft mixed labels
 
                 with torch.cuda.amp.autocast(enabled=self.use_amp):
                     # Forward pass
@@ -287,16 +295,16 @@ class Trainer:
                           current_criterion = torch.nn.CrossEntropyLoss()
                     
                     if isinstance(current_criterion, SemanticLDLLoss):
-                        if is_train and self.mixup_alpha > 0:
-                            classification_loss = lam * current_criterion(output, target, processed_learnable_text_features) + \
-                                                  (1 - lam) * current_criterion(output, target_b, processed_learnable_text_features)
-                        else:
+                        # With multi-label Mixup, target is already pre-mixed (soft labels)
+                        # SemanticLDLLoss expects long indices for single-label mode.
+                        # For multi-label EMOTIC (float target), fall back to ASL.
+                        if target.dtype == torch.long:
                             classification_loss = current_criterion(output, target, processed_learnable_text_features)
-                    else:
-                        if is_train and self.mixup_alpha > 0:
-                            classification_loss = lam * current_criterion(output, target) + (1 - lam) * current_criterion(output, target_b)
                         else:
-                            classification_loss = current_criterion(output, target)
+                            classification_loss = self.criterion(output, target)
+                    else:
+                        # For ASL/BCE: target is already pre-mixed soft labels, single forward pass
+                        classification_loss = current_criterion(output, target)
                     
                     # DEBUG: Print details for the first batch of the first epoch
                     if is_train and int(epoch_str) == 0 and i == 0:

@@ -231,7 +231,9 @@ class AsymmetricLoss(nn.Module):
             one_sided_w = torch.pow(1 - pt, one_sided_gamma)
             loss *= one_sided_w
 
-        return -loss.sum()
+        # Normalize by batch_size * num_classes for stable gradient scale
+        # (prevents gradient explosion vs .mean() which divides by all elements)
+        return -loss.sum() / (x.size(0) * x.size(1) + 1e-8)
 
 
 class MaskedAsymmetricLoss(nn.Module):
@@ -314,8 +316,9 @@ class MaskedAsymmetricLoss(nn.Module):
             one_sided_w = torch.pow(1 - pt, one_sided_gamma)
             loss *= one_sided_w
 
-        # Sum loss over batch consistent with AsymmetricLoss
-        return -loss.sum()
+        # Normalize by effective number of non-masked elements
+        num_active = random_mask.sum().clamp(min=1.0)
+        return -loss.sum() / num_active
 
 
 class ConceptAttentionDistillationLoss(nn.Module):
