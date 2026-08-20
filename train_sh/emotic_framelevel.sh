@@ -63,7 +63,6 @@ python main.py \
     --mask-context-body \
     --modality-dropout 0.1 \
     --drop-path-rate 0.0 \
-    --reprob 0.25 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07
