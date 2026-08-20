@@ -213,6 +213,11 @@ class GenerateModel(nn.Module):
             )
             # Initialize label queries from CLIP text features (done after model is on device)
             self._q2l_initialized = False
+            # Freeze Q2L when not actively used to save memory and gradients
+            if not getattr(args, 'use_q2l', False):
+                for param in self.q2l_head.parameters():
+                    param.requires_grad = False
+                print("=> Q2L head FROZEN (use_q2l=False). Enable with --use-q2l to unfreeze.")
         
         # ==================== Co-occurrence Matrix (EMOTIC) ====================
         if self.is_multilabel:
