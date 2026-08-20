@@ -48,7 +48,10 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
             if "image_encoder" in name:
                 param.requires_grad = True
 
-    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "q2l_head", "label_query", "label_decoder", "modality_importance", "adaptive_gate", "gate_proj"]
+    trainable_params_keywords = ["temporal_net", "prompt_learner", "temporal_net_body", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "modality_importance", "adaptive_gate", "gate_proj"]
+    # q2l_head is managed by Generate_Model.__init__ based on use_q2l flag — do NOT force here
+    if getattr(args, 'use_q2l', False):
+        trainable_params_keywords += ["q2l_head", "label_query", "label_decoder"]
     
     print('\nTrainable parameters:')
     for name, param in model.named_parameters():
