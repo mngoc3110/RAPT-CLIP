@@ -314,7 +314,8 @@ class VideoDataset(data.Dataset):
                     img_path = video_frames_path[p]
                     try:
                         img_pil = Image.open(img_path).convert('RGB')
-                    except:
+                    except Exception as e:
+                        print(f"[DEBUG] Kaggle DataLoader Error: Could not open image: {img_path}. Error: {e}")
                         img_pil = Image.new('RGB', (self.image_size, self.image_size))
 
                 # 2. Key Lookup Strategy for Bounding Box
