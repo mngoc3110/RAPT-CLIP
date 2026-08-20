@@ -111,26 +111,42 @@ class GenerateModel(nn.Module):
         self.face_adapter = Adapter(c_in=512, reduction=4)
 
         # For MI Loss
-        if args.dataset == "RAER":
-            hand_crafted_prompts = class_descriptor_5_only_face
-        elif args.dataset == "CK+":
-            from models.Text import class_descriptor_ckplus
-            hand_crafted_prompts = class_descriptor_ckplus
-        elif args.dataset == "DAiSEE":
-            from models.Text import class_descriptor_daisee
-            hand_crafted_prompts = class_descriptor_daisee
-        elif args.dataset == "EMOTIC":
-            # Use the first prompt of each class as the hand_crafted prompt for MI Loss
-            hand_crafted_prompts = [prompts[0] if isinstance(prompts, list) else prompts for prompts in input_text]
-        else:
-            # Fallback to some generic or 7-class descriptors if available
-            from models.Text import class_descriptor_7_only_face
-            hand_crafted_prompts = class_descriptor_7_only_face
-            
-        self.tokenized_hand_crafted_prompts = torch.cat([clip.tokenize(p) for p in hand_crafted_prompts])
+        # Concept Generation & Refinement (CGR) - PromptCAD
+        # Precompute the Center Concept Tokens for each class using all available LLM descriptors
+        # This creates a highly accurate semantic anchor for Text Distillation and CAD Loss.
+        print("=> Generating Center Concept Tokens (CGR) from all class descriptions...")
+        all_concept_tokens = []
         with torch.no_grad():
-            embedding = clip_model.token_embedding(self.tokenized_hand_crafted_prompts.to(clip_model.token_embedding.weight.device)).type(self.dtype)
-        self.register_buffer("hand_crafted_prompt_embeddings", embedding)
+            for i, class_prompts in enumerate(input_text):
+                # Ensure it's a list of prompts
+                if not isinstance(class_prompts, list):
+                    class_prompts = [class_prompts]
+                
+                # Tokenize all prompts for this class
+                tokenized = torch.cat([clip.tokenize(p) for p in class_prompts]).to(clip_model.token_embedding.weight.device)
+                
+                # Get token embeddings
+                token_embeddings = clip_model.token_embedding(tokenized).type(self.dtype)
+                
+                # Pass through text encoder
+                # Note: GenerateModel.text_encoder is already created above, but it requires prompts and tokenized.
+                # Actually, clip_model.encode_text takes tokenized directly!
+                # Wait, our Custom TextEncoder takes (prompts, tokenized) to allow soft prompts.
+                # For hard prompts, we just pass the raw token_embeddings.
+                class_text_features = self.text_encoder(token_embeddings, tokenized)
+                class_text_features = class_text_features.float()
+                class_text_features = class_text_features / (class_text_features.norm(dim=-1, keepdim=True) + 1e-6)
+                
+                # Average them to get the Center Concept Token (K-means with K=1)
+                center_token = class_text_features.mean(dim=0, keepdim=True)
+                center_token = center_token / (center_token.norm(dim=-1, keepdim=True) + 1e-6)
+                
+                all_concept_tokens.append(center_token)
+                
+        # Shape: (num_classes, 512)
+        center_concept_tokens = torch.cat(all_concept_tokens, dim=0)
+        self.register_buffer("hand_crafted_text_features", center_concept_tokens)
+        print(f"=> CGR: Generated Center Concept Tokens with shape: {self.hand_crafted_text_features.shape}")
 
 
         # Context Stream Configuration
@@ -262,11 +278,7 @@ class GenerateModel(nn.Module):
         Called once after model is on device and text encoder is ready."""
         if self.is_multilabel and not self._q2l_initialized:
             with torch.no_grad():
-                hand_crafted_prompts = self.hand_crafted_prompt_embeddings
-                tokenized = self.tokenized_hand_crafted_prompts.to(hand_crafted_prompts.device)
-                text_feats = self.text_encoder(hand_crafted_prompts, tokenized)
-                text_feats = text_feats.float()
-                text_feats = text_feats / (text_feats.norm(dim=-1, keepdim=True) + 1e-6)
+                text_feats = self.hand_crafted_text_features
             self.q2l_head.init_from_text_features(text_feats)
             self._q2l_initialized = True
 
@@ -445,13 +457,7 @@ class GenerateModel(nn.Module):
             getattr(self.args, 'lambda_text', 0) > 0
         )
         if need_hand_crafted:
-            hand_crafted_prompts = self.hand_crafted_prompt_embeddings
-            tokenized_hand_crafted_prompts = self.tokenized_hand_crafted_prompts.to(hand_crafted_prompts.device)
-            
-            with torch.no_grad():
-                hand_crafted_text_features = self.text_encoder(hand_crafted_prompts, tokenized_hand_crafted_prompts)
-                hand_crafted_text_features = hand_crafted_text_features.float()
-                hand_crafted_text_features = hand_crafted_text_features / (hand_crafted_text_features.norm(dim=-1, keepdim=True) + 1e-6)
+            hand_crafted_text_features = self.hand_crafted_text_features
 
         ################# MoCo Updates ###################
         moco_logits = None
@@ -501,9 +507,10 @@ class GenerateModel(nn.Module):
             else:
                 output = (video_features @ text_features.t()) / self.args.temperature
 
-            if hasattr(self, 'class_bias') and self.is_multilabel:
-                if torch.isnan(self.class_bias).any(): print("[DEBUG] class_bias contains NaN!")
-                output = output + self.class_bias
+        # APPLY CLASS BIAS to BOTH paths for ASL stability
+        if hasattr(self, 'class_bias') and self.is_multilabel:
+            if torch.isnan(self.class_bias).any(): print("[DEBUG] class_bias contains NaN!")
+            output = output + self.class_bias
                 
         if torch.isnan(output).any(): print("[DEBUG] NaN detected in final output!")
 
