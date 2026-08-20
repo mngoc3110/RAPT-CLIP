@@ -37,7 +37,7 @@ python main.py \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
     --epochs 40 \
-    --batch-size 6 \
+    --batch-size 8 \
     --print-freq 50 \
     --grad-clip 1.0 \
     --optimizer AdamW \
@@ -49,10 +49,11 @@ python main.py \
     --weight-decay 0.01 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda_mi 0.0 \
-    --lambda_dc 0.0 \
+    --lambda_mi 0.1 \
+    --lambda_dc 0.1 \
+    --use-mpi \
     --use-cgr \
-    --contexts-number 16 \
+    --contexts-number 8 \
     --text-type prompt_ensemble \
     --num-segments 1 \
     --temporal-layers 1 \
@@ -61,7 +62,8 @@ python main.py \
     --crop-body \
     --mask-context-body \
     --modality-dropout 0.1 \
-    --drop-path-rate 0.00 \
+    --drop-path-rate 0.0 \
+    --reprob 0.25 \
     --duration 1 \
     --image-size 224 \
-    --temperature 1.0
+    --temperature 0.07
