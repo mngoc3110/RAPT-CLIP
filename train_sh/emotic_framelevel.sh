@@ -29,7 +29,7 @@ python main.py \
     --dataset EMOTIC \
     --gpu 0 \
     --exper-name EMOTIC-FrameLevelFusion \
-    --root-dir /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn \
+    --root-dir /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/cvpr_emotic/cvpr_emotic \
     --train-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/train.txt \
     --val-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/val.txt \
     --test-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/test.txt \
