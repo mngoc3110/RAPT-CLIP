@@ -330,8 +330,8 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
-            # Q2L Multi-Label Head (EMOTIC)
-            if hasattr(model, 'q2l_head'):
+            # Q2L Multi-Label Head (EMOTIC) — only add when actually used
+            if hasattr(model, 'q2l_head') and getattr(args, 'use_q2l', False):
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
