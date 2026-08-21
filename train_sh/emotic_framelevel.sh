@@ -66,8 +66,6 @@ python main.py \
     --weight-decay 0.01 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda_mi 0.0 \
-    --lambda_dc 0.0 \
     --lambda-cad 0.1 \
     --lambda-text 0.1 \
     --use-mpi \

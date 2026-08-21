@@ -92,8 +92,8 @@ optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for le
 # --- Loss & Imbalance Handling ---
 loss_group = parser.add_argument_group('Loss & Imbalance Handling', 'Parameters for loss functions and imbalance handling')
 loss_group.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'ldl', 'ldam', 'bce', 'asl', 'masked_asl'], help='Type of primary classification loss (ce, ldl, ldam, bce, asl, masked_asl).')
-loss_group.add_argument('--lambda_mi', type=float, default=0.1, help='Weight for the Mutual Information loss.')
-loss_group.add_argument('--lambda_dc', type=float, default=0.1, help='Weight for the Decorrelation loss.')
+loss_group.add_argument('--lambda_mi', type=float, default=0.0, help='Weight for the Mutual Information loss.')
+loss_group.add_argument('--lambda_dc', type=float, default=0.0, help='Weight for the Decorrelation loss.')
 loss_group.add_argument('--mi-warmup', type=int, default=5, help='Warmup epochs for MI loss.')
 loss_group.add_argument('--mi-ramp', type=int, default=10, help='Ramp-up epochs for MI loss.')
 loss_group.add_argument('--mi-ramp-type', type=str, default='ramp_up', choices=['ramp_up', 'ramp_down'], help='Type of ramp for MI loss weight (ramp_up or ramp_down).')
