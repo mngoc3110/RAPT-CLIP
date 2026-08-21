@@ -327,7 +327,17 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
             ]
             if hasattr(model, 'cmaf'):
-                optimizer_grouped_parameters.append({"params": model.cmaf.parameters(), "lr": args.lr})
+                # Separate modality_importance with higher LR so it can actually learn
+                # (at lr=2e-5 it barely moved over 20 epochs — needs 50x boost)
+                cmaf_params_no_modality = [p for n, p in model.cmaf.named_parameters()
+                                           if 'modality_importance' not in n]
+                optimizer_grouped_parameters.append({"params": cmaf_params_no_modality, "lr": args.lr})
+                if hasattr(model.cmaf, 'modality_importance'):
+                    optimizer_grouped_parameters.append({
+                        "params": [model.cmaf.modality_importance],
+                        "lr": 1e-3,  # High LR: modality_importance needs fast updates
+                    })
+                    print(f"=> cmaf.modality_importance optimizer lr=1e-3 (separate group)")
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
             # Q2L Multi-Label Head (EMOTIC) — only add when actually used

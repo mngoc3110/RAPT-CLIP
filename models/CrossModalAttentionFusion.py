@@ -65,9 +65,11 @@ class CrossModalAttentionFusion(nn.Module):
         
         # ========== Context-Priority Gating ==========
         if self.context_gating and self.use_context:
-            # Learnable modality importance: initialized to favor context slightly
-            # [face, body, context] → softmax → weights
-            self.modality_importance = nn.Parameter(torch.tensor([0.2, 0.3, 0.5]))
+            # Learnable modality importance: [face, body, context] → softmax → weights
+            # EMOTIC-specific: face often invisible (distant/back shots) → low face prior
+            # softmax([-0.5, 0.5, 1.0]) → [face≈12%, body≈33%, context≈55%]
+            # (was [0.2, 0.3, 0.5] → [face=29%, body=32%, context=39%] — too much face!)
+            self.modality_importance = nn.Parameter(torch.tensor([-0.5, 0.5, 1.0]))
             
             # Input-dependent gating network (adaptive per sample)
             # Takes concatenated features (3*dim) → 3 weights
