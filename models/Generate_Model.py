@@ -155,12 +155,18 @@ class GenerateModel(nn.Module):
 
         in_dim = 1536 if self.use_context else 1024
 
-        self.unified_temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
-                                                     input_dim=in_dim,
-                                                     depth=args.temporal_layers,
-                                                     heads=8,
-                                                     mlp_dim=1024,
-                                                     dim_head=64)
+        self.use_temporal = (getattr(args, 'temporal_layers', 1) > 0) and (getattr(args, 'num_segments', 1) > 1)
+        if self.use_temporal:
+            print(f"=> Temporal AttnPool ENABLED (layers={args.temporal_layers}, segments={args.num_segments})")
+            self.unified_temporal_net = Temporal_Transformer_AttnPool(num_patches=16,
+                                                         input_dim=in_dim,
+                                                         depth=args.temporal_layers,
+                                                         heads=8,
+                                                         mlp_dim=1024,
+                                                         dim_head=64)
+        else:
+            print(f"=> Temporal AttnPool DISABLED (Bypassed for image dataset or temporal_layers=0)")
+            self.unified_temporal_net = nn.Identity()
 
         # Store clip_model_ as a plain Python attribute (NOT an nn.Module submodule).
         self.project_fc = nn.Linear(in_dim, 512)

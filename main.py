@@ -320,12 +320,14 @@ def run_training(args: argparse.Namespace) -> None:
         else:
             # V1 Architecture
             optimizer_grouped_parameters = [
-                {"params": model.unified_temporal_net.parameters(), "lr": args.lr},
                 {"params": model.image_encoder.parameters(), "lr": args.lr_image_encoder},
                 {"params": model.prompt_learner.parameters(), "lr": args.lr_prompt_learner},
                 {"params": model.project_fc.parameters(), "lr": args.lr},
                 {"params": model.face_adapter.parameters(), "lr": args.lr_adapter},
             ]
+            if getattr(model, 'use_temporal', True) and hasattr(model, 'unified_temporal_net') and not isinstance(model.unified_temporal_net, nn.Identity):
+                optimizer_grouped_parameters.append({"params": model.unified_temporal_net.parameters(), "lr": args.lr})
+                print("=> Added unified_temporal_net to optimizer")
             if hasattr(model, 'cmaf'):
                 # Separate modality_importance with higher LR so it can actually learn
                 # (at lr=2e-5 it barely moved over 20 epochs — needs 50x boost)
