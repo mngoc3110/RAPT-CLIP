@@ -375,11 +375,11 @@ class ConceptAttentionDistillationLoss(nn.Module):
         # 1. Compute dot-product attention scores S: (B, N)
         # einsum: (B, N, D) * (B, D) -> (B, N)
         s_learn = torch.einsum('bnd,bd->bn', patch_norm, g_sample) / self.tau
-        s_ref = torch.einsum('bnd,bd->bn', patch_norm, mu_sample) / self.tau
+        s_ref = torch.einsum('bnd,bd->bn', patch_norm.detach(), mu_sample.detach()) / self.tau
 
         # 2. Log-softmax normalization over spatial dimension N
         a_learn = F.log_softmax(s_learn, dim=-1)
-        a_ref = F.log_softmax(s_ref, dim=-1)
+        a_ref = F.log_softmax(s_ref, dim=-1).detach()
 
         # 3. L1 Attention Distillation Loss
         loss_att = F.l1_loss(a_learn, a_ref, reduction='mean')
@@ -403,7 +403,7 @@ class TextDistillationLoss(nn.Module):
             ref_concept_features: (C, D)
         """
         norm_learn = learnable_text_features / (learnable_text_features.norm(dim=-1, keepdim=True) + 1e-6)
-        norm_ref = ref_concept_features / (ref_concept_features.norm(dim=-1, keepdim=True) + 1e-6)
+        norm_ref = (ref_concept_features / (ref_concept_features.norm(dim=-1, keepdim=True) + 1e-6)).detach()
         return F.l1_loss(norm_learn, norm_ref, reduction='mean')
 
 
