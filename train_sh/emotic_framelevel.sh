@@ -68,6 +68,8 @@ python main.py \
     --scheduler cosine \
     --lambda_mi 0.0 \
     --lambda_dc 0.0 \
+    --lambda-cad 0.1 \
+    --lambda-text 0.1 \
     --use-mpi \
     --use-cgr \
     --contexts-number 8 \
