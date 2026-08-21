@@ -369,9 +369,12 @@ class GenerateModel(nn.Module):
             else:
                 fused_frame_features = self.cmaf_m(image_face_features, image_body_features)
             
-        # Unified Temporal Transformer (momentum)
+        # Unified Temporal Transformer (momentum - only needed for video t > 1)
         fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
-        video_features = self.unified_temporal_net_m(fused_frame_features)
+        if t > 1:
+            video_features = self.unified_temporal_net_m(fused_frame_features)
+        else:
+            video_features = fused_frame_features.squeeze(1)
         
         video_features = self.project_fc_m(video_features)
         video_features = video_features / video_features.norm(dim=-1, keepdim=True)
@@ -425,9 +428,13 @@ class GenerateModel(nn.Module):
             else:
                 fused_frame_features = self.cmaf(image_face_features, image_body_features)
             
-        # Unified Temporal Transformer
+        # Unified Temporal Transformer (only needed for video t > 1, bypass for image t=1)
         fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
-        video_features = self.unified_temporal_net(fused_frame_features)
+        if t > 1:
+            video_features = self.unified_temporal_net(fused_frame_features)
+        else:
+            # Single-frame image (e.g. EMOTIC t=1): Direct passthrough to preserve CLIP feature fidelity
+            video_features = fused_frame_features.squeeze(1)
 
         if torch.isnan(video_features).any(): print("[DEBUG] NaN detected after CMAF!")
             
