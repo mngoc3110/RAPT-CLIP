@@ -2,41 +2,50 @@
 # EMOTIC Training Script - Multi-label FrameLevelFusion
 # Target mAP: > 35%
 
-# ==========================================
-# HYPERPARAMETER OPTIMIZATION FOR EMOTIC
-# ==========================================
-# Dataset: EMOTIC (26 classes, multi-label)
-# Features:
-#   - CMAF Fusion (Face + Body + Context)
-#   - ASL Loss (Multi-label)
-#   - ViT-B/16 FROZEN (backbone not updated)
-#   - Prompt Ensemble (detailed LLM lexicons)
-#   - Modality Dropout (p=0.1)
-#   - Fixed class bias from training data prior
+# ==============================================================================
+# 🔥 [LATEST UPDATE - 2026-08-21] EMOTIC PROMPTCAD TRAINING SCRIPT
+# Target mAP: > 35%
+# ==============================================================================
+# 
+# 🌟 MAJOR UPGRADES & ARCHITECTURAL FIXES:
+# ------------------------------------------------------------------------------
+# 1. FULL PROMPTCAD FRAMEWORK (TCSVT 2026):
+#    - Concept Generation & Refinement (--use-cgr): Generates LLM concept anchors (μ_c)
+#    - Concept Attention Distillation (--lambda-cad 0.1): Distills spatial attention
+#      maps onto 196 context/body scene patches (where emotion cues reside)
+#    - Text Prototype Distillation (--lambda-text 0.1): L1 regularizer prevents prompt
+#      drift WITHOUT penalizing natural multi-label emotion co-occurrences
+#    - Multi-Perspective Inference (--use-mpi): Aggregates multi-prompt viewpoints
 #
-# KEY CHANGES vs prev run (stuck at 31%):
+# 2. LEGACY MI/DC LOSSES COMPLETELY REMOVED:
+#    - Legacy CrossEntropy MI & MSE DC forced 26 classes to be orthogonal/mutually exclusive
+#    - Caused valid mAP to collapse from 30.89% down to 28.72% in emotic-new.txt
+#    - Now 100% eliminated for clean multi-label learning
 #
-# 1. FREEZE IMAGE ENCODER (--freeze-image-encoder)
-#    Root cause of overfitting: ViT-B/16 = 87M/112M params.
-#    With 16K images (7000:1 ratio), ViT update drifts away from
-#    CLIP pretrained features. CLIP zero-shot gives 28.6% at epoch 0,
-#    we only got +2.3% before overfit. Freezing ViT frees optimizer
-#    budget for classifier heads that actually need to learn.
+# 3. FROZEN ViT-B/16 BACKBONE (--freeze-image-encoder + --lr-image-encoder 0):
+#    - 87M ViT parameters locked to preserve 400M-image CLIP zero-shot features
+#    - Prevents catastrophic forgetting & overfitting on 16K EMOTIC samples
+#    - Trainable parameters reduced from 112M down to ~25M
 #
-# 2. DISABLE MI/DC LOSS (lambda_mi=0, lambda_dc=0)
-#    emotic-new.txt evidence: valid mAP dropped 30.89%→29.18%→28.72%
-#    immediately when MI/DC activated at epoch 8. Confirmed harmful.
+# 4. EMOTIC-OPTIMIZED MODALITY INITIALIZATION (CMAF):
+#    - Init weights: Face=12%, Body=33%, Context=55% (was Face=29% - too high)
+#    - Dedicated LR=1e-3 for modality_importance to allow fast adaptation
 #
-# 3. INCREASE EPOCHS 20 → 40
-#    With frozen encoder, overfitting is much slower (~25M trainable
-#    params instead of 112M). Can train much longer safely.
-#
-# 4. STRONGER MIXUP (0.2 → 0.4)
-#    More aggressive augmentation to reduce remaining overfit.
-#
-# 5. LOWER WEIGHT DECAY (0.05 → 0.01)
-#    Frozen encoder params = smaller heads that need less L2.
-# ==========================================
+# 5. REGULARIZATION & SCHEDULING:
+#    - Stronger Mixup: alpha=0.4 (mixes labels effectively for float32 targets)
+#    - Epochs: 40 (safe from early overfitting due to frozen backbone)
+#    - Weight decay: 0.01 | Cosine LR scheduler
+# ==============================================================================
+
+echo "=========================================================================="
+echo "🚀 EMOTIC PROMPTCAD FRAMEWORK — LATEST UPDATE (2026-08-21)"
+echo "   - Backbone: ViT-B/16 FROZEN (87M params locked, zero-shot preserved)"
+echo "   - Distillation: PromptCAD (CAD=0.1 on Context Patches, TextDistill=0.1)"
+echo "   - Losses: Multi-label ASL (normalized B*C) + Fixed Data Prior Bias"
+echo "   - Legacy MI/DC: COMPLETELY REMOVED (No orthogonal multi-label penalty)"
+echo "   - Modality Init: Face=12%, Body=33%, Context=55% (lr=1e-3)"
+echo "   - Target mAP: > 35%"
+echo "=========================================================================="
 
 export CUDA_VISIBLE_DEVICES=0
 
