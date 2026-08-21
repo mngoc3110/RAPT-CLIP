@@ -486,9 +486,14 @@ class GenerateModel(nn.Module):
         ################# Spatial Patches for CAD (PromptCAD) ###################
         patch_features = None
         if getattr(self.args, 'lambda_cad', 0) > 0:
-            # Extract 196 spatial patch tokens from face stream for spatial attention distillation
-            _, face_patches = self.image_encoder(image_face_reshaped.type(self.dtype), return_patches=True)
-            patch_features = face_patches.float()
+            # Extract 196 spatial patch tokens for spatial attention distillation
+            # For EMOTIC/CAER: context/body stream contains the rich scene cues where emotions reside
+            if self.use_context and image_context is not None:
+                patch_img = image_context_reshaped
+            else:
+                patch_img = image_body_reshaped
+            _, spatial_patches = self.image_encoder(patch_img.type(self.dtype), return_patches=True)
+            patch_features = spatial_patches.float()
             patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
 
         ################# Classification ###################
