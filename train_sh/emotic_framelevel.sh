@@ -53,7 +53,7 @@ python main.py \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
     --epochs 40 \
-    --batch-size 16 \
+    --batch-size 8 \
     --print-freq 50 \
     --grad-clip 1.0 \
     --optimizer AdamW \
@@ -64,11 +64,12 @@ python main.py \
     --use-cgla \
     --cgla-topk 16 \
     --cgla-alpha 1.0 \
-    --lr 1e-4 \
-    --lr-image-encoder 5e-6 \
-    --lr-prompt-learner 2e-5 \
-    --lr-adapter 1e-4 \
-    --weight-decay 0.05 \
+    --lr 2e-5 \
+    --lr-image-encoder 0 \
+    --freeze-image-encoder \
+    --lr-prompt-learner 1e-5 \
+    --lr-adapter 3e-5 \
+    --weight-decay 0.01 \
     --momentum 0.9 \
     --scheduler cosine \
     --lambda-cad 0.1 \
@@ -79,7 +80,6 @@ python main.py \
     --dc-ramp 0 \
     --use-mpi \
     --use-cgr \
-    --use-weighted-sampler \
     --contexts-number 8 \
     --text-type prompt_ensemble \
     --num-segments 1 \
@@ -87,9 +87,10 @@ python main.py \
     --fusion-type cmaf \
     --use-context \
     --crop-body \
-    --modality-dropout 0.2 \
-    --mixup-alpha 0.0 \
-    --drop-path-rate 0.1 \
+    --mask-context-body \
+    --modality-dropout 0.1 \
+    --mixup-alpha 0.4 \
+    --drop-path-rate 0.0 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07
