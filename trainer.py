@@ -390,8 +390,14 @@ class Trainer:
                 
                 # Update progress bar
                 if len(all_preds_list) > 0:
-                    curr_preds = torch.cat(all_preds_list).numpy()
-                    curr_targets = torch.cat(all_targets_list).numpy()
+                    # For training progress bar: use a sliding window of the last 30 batches (240-480 samples).
+                    # During early epochs, the model rapidly recalibrates logits downward to reduce negative loss.
+                    # Pooling predictions from batch 0 with batch 100 causes severe temporal scale drift where
+                    # early negatives have higher probability than late positives, falsely pulling running mAP to ~9%.
+                    # A sliding window accurately reflects the model's CURRENT discriminative power.
+                    window_slice = slice(-30, None) if is_train else slice(None)
+                    curr_preds = torch.cat(all_preds_list[window_slice]).numpy()
+                    curr_targets = torch.cat(all_targets_list[window_slice]).numpy()
                     # Only calc metrics every 10 batches to save CPU time
                     if i % 10 == 0: 
                         try:
