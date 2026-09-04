@@ -328,8 +328,8 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.cross_attn_fbc.parameters(), "lr": args.lr}
             ]
             if hasattr(model, 'class_bias'):
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
-                print("=> Added class_bias to V2 optimizer with lr=1e-3")
+                model.class_bias.requires_grad_(False)
+                print("=> class_bias frozen at empirical log-odds prior in V2 (not in optimizer).")
         else:
             # V1 Architecture
             optimizer_grouped_parameters = [
@@ -360,13 +360,12 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # We previously froze class_bias because it diverged due to CMAF random initialization.
-            # Now that CMAF is zero-initialized, we MUST make class_bias learnable.
-            # ASL Loss skews the positive/negative gradient balance. If class_bias is frozen at 
-            # the true data prior, the model will destroy CLIP embeddings to correct the intercept offset.
+            # class_bias is a FIXED empirical prior from data statistics (log-odds).
+            # Keeping it frozen ensures that rare classes are anchored and cannot be crushed to 0,
+            # while frequent classes (Engagement at 49.3%) cannot monopolize the positive predictions.
             if hasattr(model, 'class_bias'):
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
-                print("=> class_bias is LEARNABLE (lr=1e-3) to absorb ASL intercept offsets.")
+                model.class_bias.requires_grad_(False)
+                print("=> class_bias frozen at empirical log-odds prior (not in optimizer).")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)

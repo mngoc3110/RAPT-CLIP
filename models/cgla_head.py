@@ -106,6 +106,10 @@ class CrossModalGlobalLocalAlignment(nn.Module):
                 
             s_local = torch.mean(topk_sim, dim=1)  # (B, C)
 
-        # 3. Kết hợp Global và Sparse Local theo công thức MPA-FER
-        logits = (s_global + self.alpha_local * s_local) / self.temperature
+        # 3. Kết hợp Global và Sparse Local theo công thức chuẩn hóa convex combination
+        # Chia cho (1.0 + alpha_local) để bảo toàn thang độ Cosine Similarity trong khoảng [-1, 1],
+        # tránh hiện tượng nhân đôi logit làm nổ giá trị lên +7.0 khiến xác suất bão hòa 99.5%.
+        combined_sim = (s_global + self.alpha_local * s_local) / (1.0 + self.alpha_local)
+        logits = combined_sim / self.temperature
         return logits
+

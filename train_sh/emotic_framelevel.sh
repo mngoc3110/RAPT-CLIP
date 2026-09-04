@@ -51,8 +51,8 @@ python main.py \
     --print-freq 50 \
     --grad-clip 1.0 \
     --optimizer AdamW \
-    --loss-type cb_asl \
-    --asl-gamma-neg 3.0 \
+    --loss-type asl \
+    --asl-gamma-neg 2.0 \
     --asl-gamma-pos 0.0 \
     --asl-clip 0.05 \
     --use-cgla \
@@ -60,9 +60,9 @@ python main.py \
     --cgla-alpha 1.0 \
     --lr 2e-5 \
     --lr-image-encoder 1e-6 \
-    --lr-prompt-learner 5e-6 \
-    --lr-adapter 2e-5 \
-    --weight-decay 0.05 \
+    --lr-prompt-learner 1e-5 \
+    --lr-adapter 3e-5 \
+    --weight-decay 0.01 \
     --momentum 0.9 \
     --scheduler cosine \
     --lambda-cad 0.1 \

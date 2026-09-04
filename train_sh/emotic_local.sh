@@ -21,7 +21,7 @@ python main.py \
     --print-freq 5 \
     --grad-clip 1.0 \
     --optimizer AdamW \
-    --loss-type cb_asl \
+    --loss-type asl \
     --asl-gamma-neg 2.0 \
     --asl-gamma-pos 0.0 \
     --asl-clip 0.05 \
