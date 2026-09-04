@@ -328,8 +328,9 @@ def run_training(args: argparse.Namespace) -> None:
                 {"params": model.cross_attn_fbc.parameters(), "lr": args.lr}
             ]
             if hasattr(model, 'class_bias'):
-                model.class_bias.requires_grad_(False)
-                print("=> class_bias frozen at empirical log-odds prior in V2 (not in optimizer).")
+                model.class_bias.requires_grad_(True)
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
+                print("=> Added class_bias to V2 optimizer with lr=1e-3")
         else:
             # V1 Architecture
             optimizer_grouped_parameters = [
@@ -360,12 +361,13 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # class_bias is a FIXED empirical prior from data statistics (log-odds).
-            # Keeping it frozen ensures that rare classes are anchored and cannot be crushed to 0,
-            # while frequent classes (Engagement at 49.3%) cannot monopolize the positive predictions.
+            # class_bias is LEARNABLE (lr=1e-3) initialized from a soft empirical log-odds prior.
+            # Making it learnable allows ASL loss to dynamically adjust class intercepts during training
+            # without permanently choking rare classes.
             if hasattr(model, 'class_bias'):
-                model.class_bias.requires_grad_(False)
-                print("=> class_bias frozen at empirical log-odds prior (not in optimizer).")
+                model.class_bias.requires_grad_(True)
+                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
+                print("=> class_bias is LEARNABLE (lr=1e-3) to absorb ASL intercept offsets.")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)

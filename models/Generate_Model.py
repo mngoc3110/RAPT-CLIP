@@ -249,7 +249,7 @@ class GenerateModel(nn.Module):
         bias = log(p / (1-p)), clipped to avoid ±inf.
         """
         if hasattr(self, 'class_bias'):
-            freq = freq_vector.clamp(0.005, 0.995)
+            freq = freq_vector.clamp(0.05, 0.50)
             log_odds = torch.log(freq / (1.0 - freq))
             self.class_bias.data.copy_(log_odds)
             print(f"=> Updated class_bias (learnable log-odds prior) from training data: min={log_odds.min():.2f}, max={log_odds.max():.2f}")

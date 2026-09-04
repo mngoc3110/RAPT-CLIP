@@ -57,16 +57,17 @@ python main.py \
     --asl-clip 0.05 \
     --use-cgla \
     --cgla-topk 16 \
-    --cgla-alpha 1.0 \
+    --cgla-alpha 0.5 \
     --lr 2e-5 \
-    --lr-image-encoder 1e-6 \
+    --lr-image-encoder 0 \
+    --freeze-image-encoder \
     --lr-prompt-learner 1e-5 \
     --lr-adapter 3e-5 \
-    --weight-decay 0.01 \
+    --weight-decay 0.02 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda-cad 0.1 \
-    --lambda-text 0.1 \
+    --lambda-cad 0.0 \
+    --lambda-text 0.0 \
     --use-mpi \
     --use-cgr \
     --contexts-number 8 \
@@ -76,8 +77,9 @@ python main.py \
     --fusion-type cmaf \
     --use-context \
     --crop-body \
-    --modality-dropout 0.0 \
-    --mixup-alpha 0.0 \
+    --mask-context-body \
+    --modality-dropout 0.1 \
+    --mixup-alpha 0.2 \
     --drop-path-rate 0.0 \
     --duration 1 \
     --image-size 224 \
