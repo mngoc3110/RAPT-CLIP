@@ -397,9 +397,15 @@ class Trainer:
                         try:
                             if is_multilabel:
                                 # Binarize targets at 0.5 to handle Mixup soft labels
-                                # (Mixup produces values like 0.991, 0.009 which confuse sklearn)
                                 binary_targets = (curr_targets > 0.5).astype(float)
-                                running_map = average_precision_score(binary_targets, curr_preds, average='macro') * 100
+                                # Only evaluate classes that have at least 1 positive sample in accumulated batches
+                                valid_classes = binary_targets.sum(axis=0) > 0
+                                if valid_classes.any():
+                                    running_map = average_precision_score(
+                                        binary_targets[:, valid_classes], 
+                                        curr_preds[:, valid_classes], 
+                                        average='macro'
+                                    ) * 100
                             else:
                                 cm = confusion_matrix(curr_targets, curr_preds, labels=range(output.shape[1]))
                                 class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-6)

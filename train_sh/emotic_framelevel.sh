@@ -73,6 +73,10 @@ python main.py \
     --scheduler cosine \
     --lambda-cad 0.1 \
     --lambda-text 0.1 \
+    --mi-warmup 0 \
+    --dc-warmup 0 \
+    --mi-ramp 0 \
+    --dc-ramp 0 \
     --use-mpi \
     --use-cgr \
     --use-weighted-sampler \

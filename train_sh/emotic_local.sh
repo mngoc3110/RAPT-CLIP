@@ -45,6 +45,10 @@ python main.py \
     --lambda-text 0.1 \
     --lambda_mi 0.0 \
     --lambda_dc 0.0 \
+    --mi-warmup 0 \
+    --dc-warmup 0 \
+    --mi-ramp 0 \
+    --dc-ramp 0 \
     --use-mpi \
     --use-cgr \
     --use-weighted-sampler \
