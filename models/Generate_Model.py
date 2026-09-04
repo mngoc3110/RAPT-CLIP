@@ -4,6 +4,7 @@ from models.Prompt_Learner import *
 from models.Text import class_descriptor_5_only_face
 from models.Adapter import Adapter
 from models.CrossModalAttentionFusion import CrossModalAttentionFusion
+from models.cgla_head import CrossModalGlobalLocalAlignment
 from models.clip import clip
 import copy
 import itertools
@@ -225,16 +226,20 @@ class GenerateModel(nn.Module):
                     param.requires_grad = False
                 print("=> Q2L head FROZEN (use_q2l=False). Enable with --use-q2l to unfreeze.")
         
+        # ==================== CGLA (MPA-FER) ====================
+        self.use_cgla = getattr(args, 'use_cgla', False)
+        if self.use_cgla:
+            top_k = getattr(args, 'cgla_topk', 16)
+            alpha_local = getattr(args, 'cgla_alpha', 1.0)
+            use_disc = not getattr(args, 'cgla_no_discriminative', False)
+            print(f"=> CGLA (MPA-FER): Initializing Global-Local Alignment Head (top_k={top_k}, alpha={alpha_local}, discriminative={use_disc})")
+            self.cgla_head = CrossModalGlobalLocalAlignment(top_k=top_k, temperature=args.temperature, alpha_local=alpha_local, use_class_discriminative=use_disc)
+
         # ==================== Co-occurrence Matrix (EMOTIC) ====================
         if self.is_multilabel:
             # Will be set externally from training data statistics
             nc = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
             self.register_buffer('label_cooccurrence', torch.zeros(nc, nc))
-
-        # ==================== MoCo Initialization ====================
-        if hasattr(args, 'use_moco') and args.use_moco:
-            print("=> Initializing MoCoRank...")
-            self._init_moco(args)
 
     def set_class_prior(self, freq_vector: torch.Tensor):
         """Update the fixed class_bias buffer from actual training data class frequencies.
@@ -248,41 +253,6 @@ class GenerateModel(nn.Module):
             log_odds = torch.log(freq / (1.0 - freq))
             self.class_bias.data.copy_(log_odds)
             print(f"=> Updated class_bias (learnable log-odds prior) from training data: min={log_odds.min():.2f}, max={log_odds.max():.2f}")
-
-    def _init_moco(self, args):
-        """Initialize MoCo momentum encoders. Called from __init__ when use_moco=True."""
-        self.moco_dim = 512
-        self.moco_k = args.moco_k
-        self.moco_m = args.moco_m
-        self.moco_t = args.moco_t
-
-        # Create momentum encoders
-        self.image_encoder_m = copy.deepcopy(self.image_encoder)
-        self.face_adapter_m = copy.deepcopy(self.face_adapter)
-        self.unified_temporal_net_m = copy.deepcopy(self.unified_temporal_net)
-        self.project_fc_m = copy.deepcopy(self.project_fc)
-        
-        if self.fusion_type == 'gfi':
-            self.gate_fc_m = copy.deepcopy(self.gate_fc)
-        else:
-            self.cmaf_m = copy.deepcopy(self.cmaf)
-
-        # Freeze momentum encoders
-        for param in self.image_encoder_m.parameters(): param.requires_grad = False
-        for param in self.face_adapter_m.parameters(): param.requires_grad = False
-        for param in self.unified_temporal_net_m.parameters(): param.requires_grad = False
-        for param in self.project_fc_m.parameters(): param.requires_grad = False
-        
-        if self.fusion_type == 'gfi':
-            for param in self.gate_fc_m.parameters(): param.requires_grad = False
-        else:
-            for param in self.cmaf_m.parameters(): param.requires_grad = False
-
-        # Create queue
-        self.register_buffer("queue", torch.randn(self.moco_dim, self.moco_k))
-        self.queue = nn.functional.normalize(self.queue, dim=0)
-        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
-
 
     def init_q2l_from_text(self):
         """Initialize Q2L label queries from hand-crafted CLIP text features.
@@ -302,89 +272,6 @@ class GenerateModel(nn.Module):
             cooccurrence_matrix = torch.from_numpy(cooccurrence_matrix).float()
         self.label_cooccurrence.copy_(cooccurrence_matrix)
         print(f"=> Set label co-occurrence matrix: {cooccurrence_matrix.shape}")
-
-    @torch.no_grad()
-    def _momentum_update_key_encoder(self):
-        """
-        Momentum update of the key encoder
-        """
-        for param_q, param_k in zip(self.image_encoder.parameters(), self.image_encoder_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.face_adapter.parameters(), self.face_adapter_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.unified_temporal_net.parameters(), self.unified_temporal_net_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        for param_q, param_k in zip(self.project_fc.parameters(), self.project_fc_m.parameters()):
-            param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        
-        if self.fusion_type == 'gfi':
-            for param_q, param_k in zip(self.gate_fc.parameters(), self.gate_fc_m.parameters()):
-                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-        else:
-            for param_q, param_k in zip(self.cmaf.parameters(), self.cmaf_m.parameters()):
-                param_k.data = param_k.data * self.moco_m + param_q.data * (1. - self.moco_m)
-
-    @torch.no_grad()
-    def _dequeue_and_enqueue(self, keys):
-        # gather keys before updating queue
-        # keys = concat_all_gather(keys) # Removed distributed gather for single GPU simplicity
-
-        batch_size = keys.shape[0]
-        ptr = int(self.queue_ptr)
-        
-        # replace the keys at ptr (dequeue and enqueue)
-        if ptr + batch_size > self.moco_k: # Handle wrap-around if batch size > remaining space
-             batch_size = self.moco_k - ptr # truncate to fit
-             keys = keys[:batch_size]
-        
-        self.queue[:, ptr:ptr + batch_size] = keys.T
-        ptr = (ptr + batch_size) % self.moco_k  # move pointer
-
-        self.queue_ptr[0] = ptr
-
-    @torch.no_grad()
-    def forward_momentum(self, image_face, image_body, image_context=None):
-        n, t, c, h, w = image_face.shape
-
-        # Face Part
-        image_face = image_face.contiguous().view(-1, c, h, w)
-        image_face_features = self.image_encoder_m(image_face.type(self.dtype))
-        image_face_features = self.face_adapter_m(image_face_features)
-        
-        # Body Part
-        image_body = image_body.contiguous().view(-1, c, h, w)
-        image_body_features = self.image_encoder_m(image_body.type(self.dtype))
-
-        # Context Part
-        if self.use_context:
-            assert image_context is not None
-            image_context = image_context.contiguous().view(-1, c, h, w)
-            image_context_features = self.image_encoder_m(image_context.type(self.dtype))
-
-        # Frame-Level Fusion (momentum)
-        if self.fusion_type == 'gfi':
-            features_to_concat = [image_face_features, image_body_features]
-            if self.use_context:
-                features_to_concat.append(image_context_features)
-            fused_frame_features = torch.cat(features_to_concat, dim=-1)
-            gate = self.gate_fc_m(fused_frame_features)
-            fused_frame_features = fused_frame_features * gate
-        else:
-            if self.use_context:
-                fused_frame_features = self.cmaf_m(image_face_features, image_body_features, image_context_features)
-            else:
-                fused_frame_features = self.cmaf_m(image_face_features, image_body_features)
-            
-        # Unified Temporal Transformer (momentum - only needed for video t > 1)
-        fused_frame_features = fused_frame_features.contiguous().view(n, t, -1)
-        if t > 1:
-            video_features = self.unified_temporal_net_m(fused_frame_features)
-        else:
-            video_features = fused_frame_features.squeeze(1)
-        
-        video_features = self.project_fc_m(video_features)
-        video_features = video_features / video_features.norm(dim=-1, keepdim=True)
-        return video_features
         
     def forward(self, image_face, image_body, image_context=None):
         ################# Visual Part #################
@@ -477,30 +364,12 @@ class GenerateModel(nn.Module):
         if need_hand_crafted:
             hand_crafted_text_features = self.hand_crafted_text_features
 
-        ################# MoCo Updates ###################
-        moco_logits = None
-        if self.training and hasattr(self.args, 'use_moco') and self.args.use_moco:
-            with torch.no_grad():
-                self._momentum_update_key_encoder()
-                k_video_features = self.forward_momentum(image_face, image_body, image_context)
-            
-            # Compute MoCo Logits
-            # Positive logits: similarity between query and key
-            l_pos = torch.einsum('nc,nc->n', [video_features, k_video_features]).unsqueeze(-1)
-            # Negative logits: similarity between query and queue
-            l_neg = torch.einsum('nc,ck->nk', [video_features, self.queue.clone().detach()])
-
-            # logits: Nx(1+K)
-            moco_logits = torch.cat([l_pos, l_neg], dim=1)
-            moco_logits /= self.moco_t
-
-            self._dequeue_and_enqueue(k_video_features)
-
-        ################# Spatial Patches for CAD (PromptCAD) ###################
+        ################# Spatial Patches for CAD & CGLA (MPA-FER) ###################
         patch_features = None
-        if getattr(self.args, 'lambda_cad', 0) > 0:
-            # Extract 196 spatial patch tokens for spatial attention distillation
-            # For EMOTIC/CAER: context/body stream contains the rich scene cues where emotions reside
+        need_patches = getattr(self.args, 'lambda_cad', 0) > 0 or getattr(self.args, 'use_cgla', False)
+        if need_patches:
+            # Extract 196 spatial patch tokens for spatial attention distillation or CGLA
+            # For EMOTIC/CAER: context/body stream contains rich scene cues; for RAER: body/face stream
             if self.use_context and image_context is not None:
                 patch_img = image_context_reshaped
             else:
@@ -510,7 +379,21 @@ class GenerateModel(nn.Module):
             patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
 
         ################# Classification ###################
-        if getattr(self.args, 'use_q2l', False) and self.is_multilabel:
+        if getattr(self.args, 'use_cgla', False) and patch_features is not None:
+            # ===== CGLA: Global-Local Alignment (MPA-FER) =====
+            # If video t > 1: reshape patch_features to (n, t, num_patches, dim)
+            if t > 1:
+                cgla_patches = patch_features.view(n, t, -1, patch_features.shape[-1])
+            else:
+                cgla_patches = patch_features.view(n, -1, patch_features.shape[-1])
+            
+            if self.is_ensemble:
+                text_input = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
+            else:
+                text_input = text_features
+
+            output = self.cgla_head(video_features, cgla_patches, text_input)
+        elif getattr(self.args, 'use_q2l', False) and self.is_multilabel:
             # ===== Q2L Multi-Label Path (Optional) =====
             if not self._q2l_initialized:
                 self.init_q2l_from_text()
@@ -538,5 +421,5 @@ class GenerateModel(nn.Module):
         if torch.isnan(output).any(): print("[DEBUG] NaN detected in final output!")
 
         if getattr(self.args, 'lambda_cad', 0) > 0:
-            return output, text_features, hand_crafted_text_features, moco_logits, patch_features
-        return output, text_features, hand_crafted_text_features, moco_logits
+            return output, text_features, hand_crafted_text_features, None, patch_features
+        return output, text_features, hand_crafted_text_features, None

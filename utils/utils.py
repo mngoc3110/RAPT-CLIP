@@ -114,7 +114,8 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 class RecorderMeter(object):
-    def __init__(self, total_epoch):
+    def __init__(self, total_epoch, is_multilabel=False):
+        self.is_multilabel = is_multilabel
         self.reset(total_epoch)
 
     def reset(self, total_epoch):
@@ -126,14 +127,13 @@ class RecorderMeter(object):
     def update(self, idx, train_loss, train_war, train_uar, val_loss, val_war, val_uar):
         self.epoch_losses[idx, 0] = train_loss
         self.epoch_losses[idx, 1] = val_loss
-        self.epoch_metrics[idx, 0] = train_war
-        self.epoch_metrics[idx, 1] = train_uar
-        self.epoch_metrics[idx, 2] = val_war
-        self.epoch_metrics[idx, 3] = val_uar
+        self.epoch_metrics[idx, 0] = train_war if train_war is not None else 0.0
+        self.epoch_metrics[idx, 1] = train_uar if train_uar is not None else 0.0
+        self.epoch_metrics[idx, 2] = val_war if val_war is not None else 0.0
+        self.epoch_metrics[idx, 3] = val_uar if val_uar is not None else 0.0
         self.current_epoch = idx + 1
 
     def plot_curve(self, save_path):
-        title = 'Training and Validation Metrics'
         dpi = 100
         width, height = 1800, 800
         legend_fontsize = 10
@@ -149,13 +149,20 @@ class RecorderMeter(object):
         ax1.plot(x_axis, self.epoch_losses[:self.current_epoch, 1], color='tab:orange', linestyle='-', label='Valid Loss')
         ax1.tick_params(axis='y')
         
-        # Create a second y-axis for the accuracies
+        # Create a second y-axis for the accuracies / mAP
         ax2 = ax1.twinx()
-        ax2.set_ylabel('Accuracy (%)')
-        ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 0], color='tab:green', linestyle='--', label='Train WAR')
-        ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 1], color='tab:blue', linestyle='--', label='Train UAR')
-        ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 2], color='tab:purple', linestyle='--', label='Valid WAR')
-        ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 3], color='tab:cyan', linestyle='--', label='Valid UAR')
+        if self.is_multilabel:
+            title = 'Training and Validation Metrics (mAP)'
+            ax2.set_ylabel('mAP (%)')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 1], color='tab:blue', linestyle='--', label='Train mAP')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 3], color='tab:cyan', linestyle='--', label='Valid mAP')
+        else:
+            title = 'Training and Validation Metrics'
+            ax2.set_ylabel('Accuracy (%)')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 0], color='tab:green', linestyle='--', label='Train WAR')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 1], color='tab:blue', linestyle='--', label='Train UAR')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 2], color='tab:purple', linestyle='--', label='Valid WAR')
+            ax2.plot(x_axis, self.epoch_metrics[:self.current_epoch, 3], color='tab:cyan', linestyle='--', label='Valid UAR')
         ax2.tick_params(axis='y')
         ax2.set_ylim(0, 100)
 

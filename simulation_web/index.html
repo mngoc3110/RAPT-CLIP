@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAPT-CLIP &amp; MPA-FER Multi-Label Emotion Simulator | EMOTIC</title>
+  <meta name="description" content="Mô phỏng trực quan luồng xử lý đa luồng (Face, Body, Context), cơ chế CGLA và phòng thí nghiệm tính toán Macro mAP đa nhãn trên tập EMOTIC 26 lớp.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- MathJax for rendering LaTeX math formulas cleanly -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+  </script>
+  <script type="text/javascript" id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+</head>
+<body>
+  <!-- Background Glow Accents -->
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+  <div class="bg-glow glow-3"></div>
+
+  <!-- Header & Top Navigation -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-badge">RESEARCH VISUALIZER</div>
+        <h1 class="brand-title">
+          <span class="gradient-text">RAPT-CLIP</span> &amp; <span class="accent-text">MPA-FER</span>
+        </h1>
+        <p class="brand-subtitle">Mô Phỏng Trực Quan Luồng Xử Lý Đa Phương Thức &amp; Đánh Giá mAP Đa Nhãn (EMOTIC 26 Classes)</p>
+      </div>
+
+      <div class="header-controls">
+        <div class="control-card">
+          <label for="scenarioSelect" class="control-label">Tình Huống Dữ Liệu:</label>
+          <select id="scenarioSelect" class="select-input">
+            <option value="celebration">Lễ mừng chiến thắng (Happiness, Excitement, Anticipation)</option>
+            <option value="student">Sinh viên nghiên cứu (Engagement, Doubt/Confusion, Peace)</option>
+          </select>
+        </div>
+        <div class="system-stats">
+          <div class="stat-pill">
+            <span class="stat-dot dot-green"></span>
+            <span>Backbone: <strong>Frozen ViT-B/16</strong></span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-dot dot-cyan"></span>
+            <span>Dataset: <strong>EMOTIC (26 Classes)</strong></span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-dot dot-purple"></span>
+            <span>Macro mAP: <strong id="headerMapScore">38.7%</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" id="navTabs">
+      <button class="nav-tab active" data-tab="tab-slicing">
+        <span class="tab-num">1</span>
+        <span class="tab-label">Phân Tách 3 Luồng Ảnh (Tri-Stream)</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-cgla">
+        <span class="tab-num">2</span>
+        <span class="tab-label">Trích Xuất &amp; CGLA (MPA-FER)</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-fusion">
+        <span class="tab-num">3</span>
+        <span class="tab-label">Hợp Nhất Đa Luồng (CMAF)</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-activation">
+        <span class="tab-num">4</span>
+        <span class="tab-label">Softmax vs Sigmoid &amp; ASL Loss</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-metrics">
+        <span class="tab-num">5</span>
+        <span class="tab-label">Đo Lường: Accuracy vs. Macro mAP</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Content Body -->
+  <main class="main-container">
+
+    <!-- ==================== TAB 1: DATA SLICING ==================== -->
+    <section id="tab-slicing" class="tab-panel active">
+      <div class="section-intro">
+        <h2>Bước 1: Phân Tách Ảnh Đầu Vào Thành 3 Luồng (Tri-Stream Slicing)</h2>
+        <p>Trong ảnh in-the-wild của EMOTIC, khuôn mặt thường bị mờ hoặc quay lưng. Cần kết hợp đồng thời <strong>Face (nét mặt vi mô)</strong>, <strong>Body (tư thế cử chỉ)</strong>, và <strong>Scene Context (bối cảnh xã hội)</strong>.</p>
+      </div>
+
+      <div class="slicing-grid">
+        <!-- Master Image with Overlay Bounding Boxes -->
+        <div class="card master-image-card">
+          <div class="card-header">
+            <h3>Ảnh Toàn Cảnh Gốc (In-the-Wild Scene)</h3>
+            <span class="badge badge-info">Raw Resolution</span>
+          </div>
+          <div class="canvas-wrapper">
+            <canvas id="masterCanvas"></canvas>
+            <div class="bbox-legend">
+              <span class="legend-item"><span class="legend-box box-green"></span> Face Box (MTCNN)</span>
+              <span class="legend-item"><span class="legend-box box-cyan"></span> Body Box (Pose/Gesture)</span>
+              <span class="legend-item"><span class="legend-box box-purple"></span> Scene Context (Unmasked)</span>
+            </div>
+          </div>
+          <div class="card-footer-controls">
+            <label class="toggle-switch">
+              <input type="checkbox" id="maskContextToggle">
+              <span class="slider round"></span>
+              <span class="toggle-text">Bật Masking Thân Người (<code class="inline-code">--mask-context-body</code>) <span class="danger-tag">Bẫy sụt giảm mAP</span></span>
+            </label>
+            <p class="helper-text" id="maskingExplanation">
+              * Khuyến nghị tắt: Giữ nguyên bối cảnh đầy đủ giúp mô hình hiểu được tương tác vật lý (cầm cúp, bắt tay, ôm, ánh mắt hướng về môi trường).
+            </p>
+          </div>
+        </div>
+
+        <!-- 3 Output Streams -->
+        <div class="streams-column">
+          <!-- Face Stream Card -->
+          <div class="stream-card" id="faceStreamCard">
+            <div class="stream-thumb">
+              <canvas id="faceThumbCanvas" width="140" height="140"></canvas>
+              <span class="stream-badge badge-green">Face Stream</span>
+            </div>
+            <div class="stream-info">
+              <h4>1. Khuôn Mặt (Micro-Expressions)</h4>
+              <p class="stream-desc">Cắt với viền margin 10px để phóng đại khóe môi, mắt, nếp nhăn trán. Nhận diện các cảm xúc vi mô.</p>
+              <div class="tensor-dims">Tensor: <code>(B, 3, 224, 224)</code> &bull; Adapter: <code>EAA (reduction=4)</code></div>
+            </div>
+          </div>
+
+          <!-- Body Stream Card -->
+          <div class="stream-card" id="bodyStreamCard">
+            <div class="stream-thumb">
+              <canvas id="bodyThumbCanvas" width="140" height="140"></canvas>
+              <span class="stream-badge badge-cyan">Body Stream</span>
+            </div>
+            <div class="stream-info">
+              <h4>2. Thân Người (Pose &amp; Gestures)</h4>
+              <p class="stream-desc">Cắt theo Bounding Box thân người. Truyền tải dáng đứng, giơ tay ăn mừng, co cụm ủ rũ hoặc thư giãn.</p>
+              <div class="tensor-dims">Tensor: <code>(B, 3, 224, 224)</code> &bull; Flag: <code>--crop-body</code></div>
+            </div>
+          </div>
+
+          <!-- Context Stream Card -->
+          <div class="stream-card" id="contextStreamCard">
+            <div class="stream-thumb">
+              <canvas id="contextThumbCanvas" width="140" height="140"></canvas>
+              <span class="stream-badge badge-purple">Scene Context</span>
+            </div>
+            <div class="stream-info">
+              <h4>3. Ngữ Cảnh Toàn Cảnh (Environment)</h4>
+              <p class="stream-desc">Toàn bộ bối cảnh xung quanh: khán đài, tiệc tùng, thư viện hay bệnh viện. Cung cấp bối cảnh nguyên nhân gây cảm xúc.</p>
+              <div class="tensor-dims">Tensor: <code>(B, 3, 224, 224)</code> &bull; Flag: <code>--use-context</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deep Insight Callout: Body Box vs Context Overlap -->
+      <div class="insight-banner">
+        <div class="insight-header">
+          <span class="insight-icon">💡</span>
+          <h4>Hiện Tượng Thực Tế: Body Box và Context Đôi Khi Gần Như Trùng Nhau (100% Redundancy)</h4>
+        </div>
+        <div class="insight-content">
+          <div class="insight-col">
+            <h5>1. Tại sao xảy ra? (Hạn chế của Bounding Box ô vuông)</h5>
+            <p>Dataset EMOTIC/CAER chỉ gán nhãn <code>[x1, y1, x2, y2]</code> hình chữ nhật bao quanh người chứ không cắt theo đường biên cơ thể (contour segmentation). Khi chụp cận cảnh (close-up) hoặc người giơ tay mở rộng, ô vuông Body chứa tới <strong>40% - 60% bối cảnh</strong>, thậm chí chiếm gần trọn khung hình. Khi đó <code>Body</code> và <code>Context</code> thực chất là một, dẫn đến dư thừa đặc trưng (feature redundancy) và mô hình dễ bị nhầm bối cảnh là cử chỉ.</p>
+          </div>
+          <div class="insight-col">
+            <h5>2. Giải pháp CGLA (MPA-FER): Tự Động Tách Contour Ngữ Nghĩa Mềm</h5>
+            <p>Thay vì lấy trung bình cả ô vuông, <strong>CGLA (Bước 2)</strong> chia ảnh Body thành 196 ViT patches và chọn <strong>Top-$k$ Patches</strong> có tương đồng cao nhất với nhãn cảm xúc text (bàn tay ăn mừng, khớp vai, nắm đấm). Các patch nền trời/cỏ nằm lọt trong ô vuông bị tự động đào thải — tương đương với một cơ chế <em>Soft Semantic Segmentation ngầm định</em> mà không cần tốn chi phí chạy mô hình SAM hay gán nhãn đa giác phức tạp!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: CGLA & VISION-LANGUAGE ==================== -->
+    <section id="tab-cgla" class="tab-panel">
+      <div class="section-intro">
+        <h2>Bước 2: Trích Xuất Đặc Trưng &amp; CGLA (MPA-FER: Global-Local Alignment)</h2>
+        <p>Kỹ thuật từ bài báo <strong>MPA-FER (arXiv:2506.21017)</strong>: Kết hợp đặc trưng toàn cục $S_g$ với <strong>Top-$k$ Patches cục bộ có điểm tương đồng cao nhất</strong> ($S_{local}$) để loại bỏ nhiễu nền và định vị chính xác vùng cảm xúc trọng yếu.</p>
+      </div>
+
+      <div class="cgla-grid">
+        <!-- 14x14 Patch Heatmap Visualizer -->
+        <div class="card patch-matrix-card">
+          <div class="card-header">
+            <h3>Bản Đồ Kích Hoạt 196 Patch Tokens (14 &times; 14 Grid)</h3>
+            <div class="topk-control">
+              <label for="topkSlider">Số lượng Top-$k$ Patches:</label>
+              <input type="range" id="topkSlider" min="4" max="32" value="16" step="2">
+              <span id="topkVal" class="val-badge">k = 16</span>
+            </div>
+          </div>
+          <div class="patch-canvas-container">
+            <canvas id="patchCanvas"></canvas>
+            <div class="patch-tooltip" id="patchTooltip">Di chuột lên các ô vuông để xem độ tương đồng</div>
+          </div>
+          <div class="card-footer-info">
+            <div class="formula-box">
+              $$S_{local} = \frac{1}{k} \sum_{i \in \text{top-}k} \text{sim}(\bm{z}_i^l, \theta(\bm{t}_d))$$
+            </div>
+            <p id="topkExplanation">Các ô viền sáng màu vàng là <strong>Top-16 Patches</strong> được chọn (tập trung vào khóe miệng, mắt hoặc cử chỉ giơ tay), hoàn toàn loại bỏ vùng nền trời/cỏ không chứa cảm xúc.</p>
+          </div>
+        </div>
+
+        <!-- Text Prompts & Dual Alignment -->
+        <div class="card text-align-card">
+          <div class="card-header">
+            <h3>Cơ Chế Căn Chỉnh Text &amp; Prototype (SPA + PVA)</h3>
+            <span class="badge badge-accent">Vision-Language Fusion</span>
+          </div>
+
+          <div class="text-prompt-box">
+            <div class="prompt-header">
+              <span class="prompt-type">LLM-Generated Hard Prompt (ChatGPT-3.5)</span>
+              <span class="class-tag" id="activeClassTag">Happiness</span>
+            </div>
+            <div class="prompt-content" id="hardPromptText">
+              "A photo of a person smiling widely with teeth showing, cheeks raised, eyes crinkled with joy, and arms raised high in triumphant celebration."
+            </div>
+            <div class="token-flow">
+              <span class="token">[SOS]</span>
+              <span class="token soft-tok">[V1]</span>
+              <span class="token soft-tok">[V2]</span>
+              <span class="token soft-tok">[V3]</span>
+              <span class="token soft-tok">[V4]</span>
+              <span class="token hard-tok">smiling</span>
+              <span class="token hard-tok">triumphant</span>
+              <span class="token hard-tok">celebration</span>
+              <span class="token">[EOS]</span>
+            </div>
+          </div>
+
+          <div class="alignment-losses">
+            <div class="loss-card">
+              <div class="loss-title">Soft-Hard Alignment ($\mathcal{L}_{ta} + \mathcal{L}_{pa}$)</div>
+              <p>Ràng buộc các soft prompts học được bám sát mô tả giải phẫu học cơ mặt chi tiết từ LLM, chống overfit.</p>
+              <div class="loss-metric">L1 Distance: <code>0.042</code></div>
+            </div>
+            <div class="loss-card">
+              <div class="loss-title">Visual Prototype Alignment ($\mathcal{L}_v$)</div>
+              <p>Neo đặc trưng visual của mẫu quanh Class Prototype $\bm{p}_c$ trích xuất từ Frozen CLIP gốc.</p>
+              <div class="loss-metric">Prototype Sim: <code>0.884</code></div>
+            </div>
+          </div>
+
+          <div class="cgla-formula-summary">
+            <div class="summary-line">
+              <span>Global Cosine Similarity ($S_g$):</span>
+              <strong id="sgScore">0.682</strong>
+            </div>
+            <div class="summary-line">
+              <span>Top-$k$ Local Similarity ($S_{local}$):</span>
+              <strong id="slocalScore">0.795</strong>
+            </div>
+            <div class="summary-line highlight-line">
+              <span>Tổng Điểm Logit trước Temperature ($S_g + S_{local}$):</span>
+              <strong id="stotScore">1.477</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: CMAF FUSION ==================== -->
+    <section id="tab-fusion" class="tab-panel">
+      <div class="section-intro">
+        <h2>Bước 3: Hợp Nhất Đa Phương Thức (Cross-Modal Attention Fusion)</h2>
+        <p>CMAF cho phép 3 luồng thông tin <strong>Face</strong>, <strong>Body</strong> và <strong>Context</strong> tương tác qua lại thông qua cơ chế Cross-Attention và mạng Gating học động trọng số thích ứng.</p>
+      </div>
+
+      <div class="fusion-layout">
+        <!-- Interactive Attention Diagram -->
+        <div class="card fusion-diagram-card">
+          <div class="card-header">
+            <h3>Sơ Đồ Luồng Tương Tác Cross-Attention 3 Nhánh (CMAF)</h3>
+            <span class="badge badge-cyan">Bi-directional Attention</span>
+          </div>
+          <div class="diagram-interactive">
+            <div class="modality-box mod-face" id="nodeFace">
+              <div class="mod-icon">👤</div>
+              <div class="mod-title">Face Stream</div>
+              <div class="mod-dims">512-d</div>
+              <div class="mod-weight" id="weightFaceBadge">Trọng số: 15%</div>
+            </div>
+            <div class="attention-arrows">
+              <div class="arrow-line arrow-fb">&harr; Cross-Attn (F &amp; B)</div>
+              <div class="arrow-line arrow-bc">&harr; Cross-Attn (B &amp; C)</div>
+              <div class="arrow-line arrow-fc">&harr; Cross-Attn (F &amp; C)</div>
+            </div>
+            <div class="modality-box mod-body" id="nodeBody">
+              <div class="mod-icon">🏃</div>
+              <div class="mod-title">Body Stream</div>
+              <div class="mod-dims">512-d</div>
+              <div class="mod-weight" id="weightBodyBadge">Trọng số: 40%</div>
+            </div>
+            <div class="modality-box mod-context" id="nodeContext">
+              <div class="mod-icon">🏞️</div>
+              <div class="mod-title">Scene Context</div>
+              <div class="mod-dims">512-d</div>
+              <div class="mod-weight" id="weightContextBadge">Trọng số: 45%</div>
+            </div>
+          </div>
+
+          <div class="fused-output-box">
+            <div class="fused-label">Fused Representation Vector:</div>
+            <div class="fused-dims">1536-d &rarr; Linear Projection &rarr; <strong>512-d (Normalized L2)</strong></div>
+          </div>
+        </div>
+
+        <!-- Modality Importance Sliders -->
+        <div class="card fusion-controls-card">
+          <div class="card-header">
+            <h3>Mạng Gating Thích Ứng (Adaptive Modality Gating)</h3>
+            <button class="btn btn-secondary btn-sm" id="resetWeightsBtn">Mặc Định Học Được</button>
+          </div>
+          <p class="slider-intro">Trên EMOTIC, mặt đối tượng thường ở xa nên mạng Adaptive Gate tự động điều chỉnh trọng số giảm bớt Face và tăng cường Body + Context:</p>
+
+          <div class="weight-control-group">
+            <div class="weight-label-row">
+              <span>Face Importance ($w_{face}$):</span>
+              <strong id="wFaceVal">15%</strong>
+            </div>
+            <input type="range" id="sliderWFace" min="0" max="100" value="15">
+          </div>
+
+          <div class="weight-control-group">
+            <div class="weight-label-row">
+              <span>Body Importance ($w_{body}$):</span>
+              <strong id="wBodyVal">40%</strong>
+            </div>
+            <input type="range" id="sliderWBody" min="0" max="100" value="40">
+          </div>
+
+          <div class="weight-control-group">
+            <div class="weight-label-row">
+              <span>Context Importance ($w_{ctx}$):</span>
+              <strong id="wCtxVal">45%</strong>
+            </div>
+            <input type="range" id="sliderWCtx" min="0" max="100" value="45">
+          </div>
+
+          <div class="fusion-insight">
+            <div class="insight-icon">💡</div>
+            <div class="insight-text">
+              <strong>Quan sát thực nghiệm:</strong> Nếu gán trọng số Face = 100% và tắt Context/Body (như mô hình FER truyền thống), macro mAP tụt từ <strong>38.7%</strong> xuống còn <strong>24.1%</strong> vì thiếu thông tin hành động và bối cảnh!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: ACTIVATION & LOSS ==================== -->
+    <section id="tab-activation" class="tab-panel">
+      <div class="section-intro">
+        <h2>Bước 4: So Sánh Hàm Kích Hoạt &amp; Cơ Chế Mất Mát (Loss Dynamics)</h2>
+        <p>Giải thích mấu chốt kỹ thuật: <strong>Vì sao Softmax và CrossEntropy triệt tiêu lẫn nhau trên tập đa nhãn</strong>, và <strong>vì sao Asymmetric Loss (ASL) giải quyết được mất cân bằng cực đoan 26 lớp</strong>.</p>
+      </div>
+
+      <div class="activation-comparator">
+        <!-- Activation Switcher -->
+        <div class="toggle-bar">
+          <span class="toggle-title">Chọn Chế Độ Tầng Kích Hoạt (Activation):</span>
+          <div class="btn-group">
+            <button class="btn btn-toggle" id="btnSoftmax">
+              <span>Softmax (Đơn nhãn - Lỗi Phổ Biến)</span>
+            </button>
+            <button class="btn btn-toggle active" id="btnSigmoid">
+              <span>Sigmoid (Đa nhãn Chuẩn EMOTIC)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="comparison-grid">
+          <!-- Live Emotion Bars Chart -->
+          <div class="card emotion-bars-card">
+            <div class="card-header">
+              <h3>Dự Đoán Xác Suất 26 Lớp Cảm Xúc</h3>
+              <div class="threshold-pill">
+                Ngưỡng Kích Hoạt: <strong id="threshValDisplay">&tau; = 0.50</strong>
+              </div>
+            </div>
+
+            <div class="bars-container" id="emotionBarsList">
+              <!-- Dynamically populated by app.js -->
+            </div>
+          </div>
+
+          <!-- Theoretical Breakdown & Loss Simulator -->
+          <div class="card loss-dynamics-card">
+            <div class="card-header">
+              <h3>Phân Tích Động Học Gradient &amp; Loss</h3>
+              <span class="badge badge-warning" id="activationStatusBadge">Sigmoid Active</span>
+            </div>
+
+            <div class="callout-box" id="activationAlertBox">
+              <!-- Dynamically updated -->
+            </div>
+
+            <div class="loss-sim-section">
+              <h4>Mô Phỏng 3 Hàm Mất Mát Phổ Biến:</h4>
+              <div class="loss-selector">
+                <label class="loss-radio">
+                  <input type="radio" name="lossSim" value="ce">
+                  <div class="radio-content">
+                    <strong>1. CrossEntropyLoss</strong>
+                    <span>Ép buộc $\sum p_i = 1$. Triệt tiêu các cảm xúc cùng tồn tại.</span>
+                  </div>
+                </label>
+                <label class="loss-radio">
+                  <input type="radio" name="lossSim" value="bce">
+                  <div class="radio-content">
+                    <strong>2. Unweighted BCE</strong>
+                    <span>96% nhãn âm đè bẹp nhãn dương. Dự đoán toàn bộ $\approx 0$.</span>
+                  </div>
+                </label>
+                <label class="loss-radio">
+                  <input type="radio" name="lossSim" value="asl" checked>
+                  <div class="radio-content">
+                    <strong>3. Calibrated ASL ($\gamma_-=2.0, \text{clip}=0.05$)</strong>
+                    <span>Loại bỏ gradient âm dễ, bảo vệ recall lớp hiếm. Chuẩn SOTA.</span>
+                  </div>
+                </label>
+              </div>
+
+              <div class="loss-metrics-display">
+                <div class="loss-stat">
+                  <span class="l-label">Gradient Lớp Dương (Positive):</span>
+                  <span class="l-val" id="gradPosVal">+0.942</span>
+                </div>
+                <div class="loss-stat">
+                  <span class="l-label">Gradient Lớp Âm (Negative):</span>
+                  <span class="l-val" id="gradNegVal">-0.015</span>
+                </div>
+                <div class="loss-stat">
+                  <span class="l-label">Tỷ lệ Cân Bằng Gradient:</span>
+                  <span class="l-val badge-green" id="gradRatioVal">Hài Hòa (62:1)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: METRICS LAB ==================== -->
+    <section id="tab-metrics" class="tab-panel">
+      <div class="section-intro">
+        <h2>Bước 5: Phòng Thí Nghiệm Đánh Giá Độ Chính Xác (Accuracy vs. Macro mAP)</h2>
+        <p>Lý do toán học tại sao <strong>Accuracy hoàn toàn vô nghĩa đối với bài toán đa nhãn mất cân bằng</strong> và cách thức <strong>Macro mAP (Mean Average Precision)</strong> được tính toán chuẩn theo `torchmetrics` và `scikit-learn`.</p>
+      </div>
+
+      <!-- Metric Trap Cards -->
+      <div class="metrics-summary-grid">
+        <div class="card metric-box box-trap">
+          <div class="metric-top">
+            <span class="metric-name">Top-1 Accuracy</span>
+            <span class="metric-badge badge-danger">Sai Về Bản Chất</span>
+          </div>
+          <div class="metric-number text-danger" id="top1AccVal">0.0%</div>
+          <p class="metric-sub">So sánh nhãn top-1 lớn nhất với vector đa nhãn 26 chiều. Hoàn toàn không phản ánh bài toán đa nhãn.</p>
+        </div>
+
+        <div class="card metric-box box-trap">
+          <div class="metric-top">
+            <span class="metric-name">Hamming Accuracy (Binary)</span>
+            <span class="metric-badge badge-warning">Ảo Tưởng Độ Chính Xác</span>
+          </div>
+          <div class="metric-number text-warning" id="hammingAccVal">94.8%</div>
+          <p class="metric-sub">Nếu mô hình đoán toàn bộ 26 lớp đều là 0 (không cảm xúc), nó vẫn đạt 94.8% accuracy nhưng vô giá trị!</p>
+        </div>
+
+        <div class="card metric-box box-gold">
+          <div class="metric-top">
+            <span class="metric-name">Macro mAP (Chuẩn Quốc Tế)</span>
+            <span class="metric-badge badge-success">Gold Standard</span>
+          </div>
+          <div class="metric-number text-success" id="macroMapVal">38.74%</div>
+          <p class="metric-sub">Trung bình cộng diện tích dưới đường cong Precision-Recall (AP) của toàn bộ 26 lớp. Độc lập với ngưỡng.</p>
+        </div>
+      </div>
+
+      <!-- PR Curve & Detailed Table Grid -->
+      <div class="eval-grid">
+        <!-- Dynamic Precision-Recall Canvas Curve -->
+        <div class="card pr-curve-card">
+          <div class="card-header">
+            <h3>Đường Cong Precision - Recall (PR Curve)</h3>
+            <div class="class-picker">
+              <label for="prClassSelect">Xem lớp:</label>
+              <select id="prClassSelect" class="select-input select-sm">
+                <!-- Dynamically filled -->
+              </select>
+            </div>
+          </div>
+
+          <div class="pr-chart-wrapper">
+            <canvas id="prCanvas" width="540" height="340"></canvas>
+          </div>
+
+          <div class="slider-box">
+            <div class="slider-header">
+              <span>Điều chỉnh Ngưỡng Quyết Định Phân Loại ($\tau$):</span>
+              <strong id="prThresholdVal">0.50</strong>
+            </div>
+            <input type="range" id="prThresholdSlider" min="0.05" max="0.95" step="0.05" value="0.50">
+          </div>
+
+          <div class="point-stats">
+            <div class="p-stat">Precision: <strong id="currPrecVal">72.4%</strong></div>
+            <div class="p-stat">Recall: <strong id="currRecVal">68.1%</strong></div>
+            <div class="p-stat">F1-Score: <strong id="currF1Val">70.2%</strong></div>
+            <div class="p-stat highlight">AP Lớp Này: <strong id="currApVal">71.3%</strong></div>
+          </div>
+        </div>
+
+        <!-- 26 Classes AP Table -->
+        <div class="card table-card">
+          <div class="card-header">
+            <h3>Báo Cáo Chi Tiết Per-Class AP (26 Lớp EMOTIC)</h3>
+            <div class="table-search">
+              <input type="text" id="tableFilterInput" placeholder="Tìm kiếm lớp cảm xúc..." class="text-input">
+            </div>
+          </div>
+
+          <div class="table-scroll-container">
+            <table class="ap-table">
+              <thead>
+                <tr>
+                  <th>Tên Lớp (Class Name)</th>
+                  <th class="text-right">AP (%)</th>
+                  <th class="text-right">Tần Suất GT</th>
+                  <th class="text-center">Đánh Giá</th>
+                </tr>
+              </thead>
+              <tbody id="apTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="table-summary-bar">
+            <span>Macro mAP: <strong class="text-success" id="tableFooterMap">38.74%</strong></span>
+            <span class="tag-top5">Top-5 Lớp Cao: Engagement, Happiness, Excitement, Anticipation, Confidence</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-content">
+      <p>&copy; 2026 RAPT-CLIP-RAER Research Toolkit. Built with Vanilla CSS, Canvas &amp; Native Web APIs.</p>
+      <div class="footer-links">
+        <span class="footer-badge">PyTorch 2.6</span>
+        <span class="footer-badge">Transformers</span>
+        <span class="footer-badge">Torchmetrics 1.9</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

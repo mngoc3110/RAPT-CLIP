@@ -91,7 +91,7 @@ optim_group.add_argument('--gamma', type=float, default=0.1, help='Factor for le
 
 # --- Loss & Imbalance Handling ---
 loss_group = parser.add_argument_group('Loss & Imbalance Handling', 'Parameters for loss functions and imbalance handling')
-loss_group.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'ldl', 'ldam', 'bce', 'asl', 'masked_asl'], help='Type of primary classification loss (ce, ldl, ldam, bce, asl, masked_asl).')
+loss_group.add_argument('--loss-type', type=str, default='ce', choices=['ce', 'ldam', 'bce', 'asl', 'masked_asl', 'cb_asl'], help='Type of primary classification loss (ce, ldam, bce, asl, masked_asl, cb_asl).')
 loss_group.add_argument('--lambda_mi', type=float, default=0.0, help='Weight for the Mutual Information loss.')
 loss_group.add_argument('--lambda_dc', type=float, default=0.0, help='Weight for the Decorrelation loss.')
 loss_group.add_argument('--mi-warmup', type=int, default=5, help='Warmup epochs for MI loss.')
@@ -101,12 +101,11 @@ loss_group.add_argument('--dc-warmup', type=int, default=5, help='Warmup epochs 
 loss_group.add_argument('--dc-ramp', type=int, default=10, help='Ramp-up epochs for DC loss.')
 loss_group.add_argument('--use-weighted-sampler', action='store_true', help='Use WeightedRandomSampler.')
 loss_group.add_argument('--label-smoothing', type=float, default=0.05, help='Label smoothing factor.')
-loss_group.add_argument('--use-ldl', action='store_true', help='Use Semantic Label Distribution Learning (LDL) Loss.')
-loss_group.add_argument('--ldl-temperature', type=float, default=1.0, help='Temperature for model logits in LDL.')
-loss_group.add_argument('--ldl-target-temperature', type=float, default=0.01, help='Temperature for target distribution in LDL (lower = sharper).')
-loss_group.add_argument('--ldl-warmup', type=int, default=5, help='Warmup epochs for LDL loss (during warmup, use CE).')
 loss_group.add_argument('--mixup-alpha', type=float, default=0.0, help='Alpha value for Mixup data augmentation. Set to 0.0 to disable. NOTE: Mixup is incompatible with LDAM (hard-label margin), keep 0.0 when using loss-type=ldam.')
 loss_group.add_argument('--mask-ratio', type=float, default=0.3, help='Ratio of negative labels to randomly mask in Masked ASL loss.')
+loss_group.add_argument('--asl-gamma-neg', type=float, default=2.0, help='Focusing parameter gamma_neg for negative samples in Asymmetric Loss (default: 2.0 for balanced multi-label).')
+loss_group.add_argument('--asl-gamma-pos', type=float, default=0.0, help='Focusing parameter gamma_pos for positive samples in Asymmetric Loss (default: 0.0).')
+loss_group.add_argument('--asl-clip', type=float, default=0.05, help='Asymmetric clipping margin for negative samples in Asymmetric Loss (default: 0.05).')
 # NEW LDAM ARGS
 loss_group.add_argument('--ldam-max-m', type=float, default=0.5, help='Max margin for LDAM Loss.')
 loss_group.add_argument('--ldam-s', type=float, default=30.0, help='Scaling factor for LDAM Loss. s=30 works well with CLIP cosine-sim outputs (proven: 73.76%% UAR on RAER). Lower values (e.g. s=3) produce weak gradients.')
@@ -116,6 +115,12 @@ loss_group.add_argument('--lambda-text', type=float, default=0.0, help='Weight f
 loss_group.add_argument('--use-cgr', action='store_true', help='Use Concept Generation & Refinement (K-means clustering) for prototypes.')
 loss_group.add_argument('--use-mpi', action='store_true', help='Use Multi-Perspective Self-Attention Pooling during inference.')
 loss_group.add_argument('--use-q2l', action='store_true', help='Enable experimental Q2L Multi-Label Head (off by default).')
+# MPA-FER (arXiv:2506.21017) Args
+loss_group.add_argument('--use-cgla', action='store_true', help='Enable Cross-modal Global-Local Alignment (CGLA) from MPA-FER.')
+loss_group.add_argument('--cgla-topk', type=int, default=16, help='Number of top-k salient patches for CGLA (default: 16).')
+loss_group.add_argument('--cgla-alpha', type=float, default=1.0, help='Weight factor for local patch similarity in CGLA (default: 1.0).')
+loss_group.add_argument('--cgla-no-discriminative', action='store_true', help='Disable class-discriminative patch centering in CGLA.')
+loss_group.add_argument('--lambda-pva', type=float, default=0.0, help='Weight for Prototype-guided Visual Alignment (PVA) loss from MPA-FER.')
 
 # --- Model & Input ---
 model_group = parser.add_argument_group('Model & Input', 'Parameters for model architecture and data handling')
@@ -130,10 +135,6 @@ model_group.add_argument('--duration', type=int, default=1, help='Duration of ea
 model_group.add_argument('--image-size', type=int, default=224, help='Size to resize input images to.')
 model_group.add_argument('--temperature', type=float, default=0.07, help='Temperature for the classification layer.')
 model_group.add_argument('--crop-body', action='store_true', help='Crop body from the input images.')
-model_group.add_argument('--use-moco', action='store_true', help='Use MoCoRank for training.')
-model_group.add_argument('--moco-k', type=int, default=4096, help='Queue size for MoCo.')
-model_group.add_argument('--moco-m', type=float, default=0.99, help='Momentum for MoCo.')
-model_group.add_argument('--moco-t', type=float, default=0.07, help='Temperature for MoCo.')
 model_group.add_argument('--drop-path-rate', type=float, default=0.0, help='Drop Path rate for Stochastic Depth.')
 model_group.add_argument('--freeze-image-encoder', action='store_true', help='Freeze the image encoder.')
 model_group.add_argument('--ablation-no-text', action='store_true', help='Use Visual-Only ablation architecture.')
@@ -253,10 +254,7 @@ def run_training(args: argparse.Namespace) -> None:
     print(f"=> Class distribution (Training): {cls_num_list}")
 
     # Loss and optimizer
-    if args.loss_type == 'ldl' or getattr(args, 'use_ldl', False):
-        print(f"=> Using SemanticLDLLoss (LDL) with temp {args.ldl_temperature} and target_temp {args.ldl_target_temperature}")
-        criterion = SemanticLDLLoss(temperature=args.ldl_temperature, target_temperature=args.ldl_target_temperature).to(args.device)
-    elif args.loss_type == 'ldam':
+    if args.loss_type == 'ldam':
         if sum(cls_num_list) > 0:
             print(f"=> Using LDAM Loss with s={args.ldam_s}, max_m={args.ldam_max_m}")
             criterion = LDAMLoss(cls_num_list=cls_num_list, max_m=args.ldam_max_m, s=args.ldam_s).to(args.device)
@@ -267,13 +265,22 @@ def run_training(args: argparse.Namespace) -> None:
         print("=> Using BCEWithLogitsLoss (Multi-label)")
         criterion = nn.BCEWithLogitsLoss().to(args.device)
     elif args.loss_type == 'asl':
-        print("=> Using AsymmetricLoss (Multi-label)")
+        print(f"=> Using AsymmetricLoss (Multi-label, gamma_neg={args.asl_gamma_neg}, gamma_pos={args.asl_gamma_pos}, clip={args.asl_clip})")
         from utils.loss import AsymmetricLoss
-        criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, disable_torch_grad_focal_loss=True).to(args.device)
+        criterion = AsymmetricLoss(gamma_neg=args.asl_gamma_neg, gamma_pos=args.asl_gamma_pos, clip=args.asl_clip, disable_torch_grad_focal_loss=True).to(args.device)
     elif args.loss_type == 'masked_asl':
-        print(f"=> Using MaskedAsymmetricLoss (Multi-label, mask_ratio={args.mask_ratio})")
+        print(f"=> Using MaskedAsymmetricLoss (Multi-label, gamma_neg={args.asl_gamma_neg}, gamma_pos={args.asl_gamma_pos}, clip={args.asl_clip}, mask_ratio={args.mask_ratio})")
         from utils.loss import MaskedAsymmetricLoss
-        criterion = MaskedAsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, mask_ratio=args.mask_ratio).to(args.device)
+        criterion = MaskedAsymmetricLoss(gamma_neg=args.asl_gamma_neg, gamma_pos=args.asl_gamma_pos, clip=args.asl_clip, mask_ratio=args.mask_ratio).to(args.device)
+    elif args.loss_type == 'cb_asl':
+        from utils.loss import ClassBalancedAsymmetricLoss
+        if sum(cls_num_list) > 0:
+            print(f"=> Using ClassBalancedAsymmetricLoss (CB-ASL) with effective sample weights & dynamic margins (gamma_neg={args.asl_gamma_neg}, gamma_pos={args.asl_gamma_pos}, clip={args.asl_clip})")
+            criterion = ClassBalancedAsymmetricLoss(cls_num_list=cls_num_list, gamma_neg=args.asl_gamma_neg, gamma_pos=args.asl_gamma_pos, clip=args.asl_clip, disable_torch_grad_focal_loss=True).to(args.device)
+        else:
+            print("=> Warning: cls_num_list is empty/zero. Falling back to standard AsymmetricLoss.")
+            from utils.loss import AsymmetricLoss
+            criterion = AsymmetricLoss(gamma_neg=args.asl_gamma_neg, gamma_pos=args.asl_gamma_pos, clip=args.asl_clip, disable_torch_grad_focal_loss=True).to(args.device)
     elif args.label_smoothing > 0:
         criterion = LSR2(e=args.label_smoothing, label_mode='class_descriptor').to(args.device)
     else:
@@ -287,10 +294,16 @@ def run_training(args: argparse.Namespace) -> None:
     cad_criterion = ConceptAttentionDistillationLoss(tau=0.07).to(args.device) if getattr(args, 'lambda_cad', 0) > 0 else None
     text_distill_criterion = TextDistillationLoss().to(args.device) if getattr(args, 'lambda_text', 0) > 0 else None
 
+    # MPA-FER (arXiv:2506.21017) PVA Loss
+    from utils.loss import PrototypeVisualAlignmentLoss
+    pva_criterion = PrototypeVisualAlignmentLoss(metric='l1').to(args.device) if getattr(args, 'lambda_pva', 0) > 0 else None
+
     # Concept prototypes are now generated internally in Generate_Model.py (CGR)
     concept_prototypes = None
+    visual_class_prototypes = None
 
-    recorder = RecorderMeter(args.epochs)
+    is_multilabel = (args.dataset == "EMOTIC")
+    recorder = RecorderMeter(args.epochs, is_multilabel=is_multilabel)
     
     if hasattr(args, 'ablation_no_text') and args.ablation_no_text:
         optimizer_grouped_parameters = [
@@ -370,11 +383,11 @@ def run_training(args: argparse.Namespace) -> None:
             start_epoch = checkpoint['epoch']
             best_val_uar = checkpoint.get('best_acc', 0.0)
             
-            # Use strict=False to allow loading older checkpoints into the new model (e.g., when adding MoCo)
+            # Use strict=False to allow loading older checkpoints into the new model
             msg = model.load_state_dict(checkpoint['state_dict'], strict=False)
             print(f"=> Load result: {msg}")
             
-            if 'optimizer' in checkpoint and not args.use_moco: # Skip optimizer resume if architecture changed significantly
+            if 'optimizer' in checkpoint:
                 try:
                     optimizer.load_state_dict(checkpoint['optimizer'])
                 except:
@@ -443,11 +456,11 @@ def run_training(args: argparse.Namespace) -> None:
                     dc_criterion=dc_criterion, lambda_dc=args.lambda_dc,
                     cad_criterion=cad_criterion, lambda_cad=getattr(args, 'lambda_cad', 0.0),
                     text_distill_criterion=text_distill_criterion, lambda_text=getattr(args, 'lambda_text', 0.0),
-                    concept_prototypes=concept_prototypes,
+                    pva_criterion=pva_criterion, lambda_pva=getattr(args, 'lambda_pva', 0.0),
+                    concept_prototypes=concept_prototypes, visual_class_prototypes=visual_class_prototypes,
                     mi_warmup=args.mi_warmup, mi_ramp=args.mi_ramp, mi_ramp_type=args.mi_ramp_type,
                     dc_warmup=args.dc_warmup, dc_ramp=args.dc_ramp, 
-                    use_amp=args.use_amp, grad_clip=args.grad_clip, mixup_alpha=args.mixup_alpha,
-                    use_ldl=args.use_ldl, ldl_warmup=args.ldl_warmup)
+                    use_amp=args.use_amp, grad_clip=args.grad_clip, mixup_alpha=args.mixup_alpha)
     
     for epoch in range(start_epoch, args.epochs):
         inf = f'******************** Epoch: {epoch} ********************'
@@ -479,12 +492,10 @@ def run_training(args: argparse.Namespace) -> None:
                     f.write(weight_msg + '\n')
 
         # Save checkpoint — use mAP for EMOTIC, UAR for single-label datasets
-        # For multi-label: train_war=mAP, train_uar=mAP, val_war=mAP, val_uar=mAP (returned by trainer)
-        is_best = val_uar > best_val_uar
-        best_val_uar = max(val_uar, best_val_uar)
-        best_val_war = max(val_war, best_val_war)
-        best_train_uar = max(train_uar, best_train_uar)
-        best_train_war = max(train_war, best_train_war)
+        # For multi-label: train_uar=train_mAP, val_uar=val_mAP (val_war is None)
+        eval_metric = val_uar
+        is_best = eval_metric > best_val_uar
+        best_val_uar = max(eval_metric, best_val_uar)
 
         # 1. Save full checkpoint (with optimizer) → model.pth, used for --resume
         save_checkpoint({
@@ -516,21 +527,28 @@ def run_training(args: argparse.Namespace) -> None:
         recorder.update(epoch, train_los, train_war, train_uar, val_los, val_war, val_uar)
         recorder.plot_curve(log_curve_path)
         
-        metric_name = 'mAP' if is_multilabel else 'UAR'
-        log_msg = (
-                   f'\n'
-                   f'--- Epoch {epoch} Summary ---\n'
-                   f'Train WAR: {train_war:.2f}% | Train {metric_name}: {train_uar:.2f}%\n'
-                   f'Valid WAR: {val_war:.2f}% | Valid {metric_name}: {val_uar:.2f}%\n'
-                   f'Best Valid {metric_name} so far: {best_val_uar:.2f}%\n'
-                   f'Time: {epoch_time:.2f}s\n'
-                   )
-        if not is_multilabel:
-            log_msg += (
-                   f'Train Confusion Matrix:\n{train_cm}\n'
-                   f'Validation Confusion Matrix:\n{val_cm}\n'
-                   )
-        log_msg += f'--- End of Epoch {epoch} ---\n'
+        if is_multilabel:
+            log_msg = (
+                f'\n'
+                f'--- Epoch {epoch} Summary ---\n'
+                f'Train Loss: {train_los:.4f} | Train mAP: {train_uar:.2f}%\n'
+                f'Valid Loss: {val_los:.4f} | Valid mAP: {val_uar:.2f}%\n'
+                f'Best Valid mAP so far: {best_val_uar:.2f}%\n'
+                f'Time: {epoch_time:.2f}s\n'
+                f'--- End of Epoch {epoch} ---\n'
+            )
+        else:
+            log_msg = (
+                f'\n'
+                f'--- Epoch {epoch} Summary ---\n'
+                f'Train Loss: {train_los:.4f} | Train WAR: {train_war:.2f}% | Train UAR: {train_uar:.2f}%\n'
+                f'Valid Loss: {val_los:.4f} | Valid WAR: {val_war:.2f}% | Valid UAR: {val_uar:.2f}%\n'
+                f'Best Valid UAR so far: {best_val_uar:.2f}%\n'
+                f'Time: {epoch_time:.2f}s\n'
+                f'Train Confusion Matrix:\n{train_cm}\n'
+                f'Validation Confusion Matrix:\n{val_cm}\n'
+                f'--- End of Epoch {epoch} ---\n'
+            )
         print(log_msg)
         with open(log_txt_path, 'a') as f:
             f.write(log_msg + '\n\n')
@@ -579,15 +597,26 @@ def run_eval(args: argparse.Namespace) -> None:
     _, _, test_loader = build_dataloaders(args)
 
     # Run evaluation
-    computer_uar_war(
-        val_loader=test_loader,
-        model=model,
-        device=args.device,
-        class_names=class_names,
-        log_confusion_matrix_path=log_confusion_matrix_path,
-        log_txt_path=log_txt_path,
-        title=f"Confusion Matrix on {args.dataset}"
-    )
+    if (args.dataset == "EMOTIC"):
+        from utils.utils import compute_multilabel_metrics
+        compute_multilabel_metrics(
+            val_loader=test_loader,
+            model=model,
+            device=args.device,
+            class_names=class_names,
+            log_txt_path=log_txt_path,
+            title=f"Multi-Label Evaluation on {args.dataset} (mAP)"
+        )
+    else:
+        computer_uar_war(
+            val_loader=test_loader,
+            model=model,
+            device=args.device,
+            class_names=class_names,
+            log_confusion_matrix_path=log_confusion_matrix_path,
+            log_txt_path=log_txt_path,
+            title=f"Confusion Matrix on {args.dataset}"
+        )
     print("=> Evaluation complete.")
 
 

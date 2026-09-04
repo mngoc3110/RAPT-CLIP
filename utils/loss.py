@@ -236,6 +236,92 @@ class AsymmetricLoss(nn.Module):
         return -loss.sum() / (x.size(0) * x.size(1) + 1e-8)
 
 
+class ClassBalancedAsymmetricLoss(nn.Module):
+    """
+    Class-Balanced Asymmetric Loss (CB-ASL) cho bài toán đa nhãn mất cân bằng nghiêm trọng (Long-tail Multi-label).
+    
+    Giải quyết trực tiếp vấn đề của EMOTIC (26 lớp):
+    - Các lớp đầu bảng (Head): Engagement, Anticipation, Happiness có hàng ngàn mẫu, áp đảo.
+    - Các lớp đuôi hiếm (Rare/Tail): Pain, Yearning, Embarrassment, Disquietment, Suffering chỉ xuất hiện < 1-2%,
+      bị dội lượng lớn gradient âm (98% nhãn âm) khiến xác suất dự đoán bị đè bẹp về 0.
+      
+    Cơ chế tối ưu:
+    1. Trọng số mẫu hiệu dụng (Effective Number of Samples, Cui et al. CVPR 2019):
+       w_c = (1 - beta) / (1 - beta^{N_c})
+       Lớp càng hiếm thì trọng số w_c càng lớn, bảo vệ gradient dương của lớp hiếm.
+    2. Dynamic Margin cho Logits:
+       x_c^{margin} = x_c - delta_c * y_c  với delta_c = delta_base * (N_max / N_c)^{0.15}
+       Buộc mô hình phải tách biệt rõ ràng ranh giới quyết định cho các lớp hiếm.
+    3. Asymmetric Clipping + Focusing:
+       Triệt tiêu gradient âm từ các mẫu âm dễ đoán, ngăn chặn hiện tượng áp đảo âm.
+    """
+    def __init__(self, cls_num_list, beta=0.9999, gamma_neg=2.0, gamma_pos=0.0, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=True):
+        super(ClassBalancedAsymmetricLoss, self).__init__()
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+        
+        # 1. Tính trọng số Class-Balanced Weight w_c từ số lượng mẫu từng lớp
+        cls_num_arr = np.array(cls_num_list, dtype=np.float32)
+        cls_num_arr = np.maximum(cls_num_arr, 1.0)  # Tránh chia cho 0
+        
+        effective_num = 1.0 - np.power(beta, cls_num_arr)
+        weights = (1.0 - beta) / np.maximum(effective_num, 1e-8)
+        # Chuẩn hóa để trung bình trọng số = 1.0 (bảo toàn thang độ gradient tổng)
+        weights = weights / np.mean(weights)
+        self.register_buffer('class_weights', torch.FloatTensor(weights))  # (C,)
+        
+        # 2. Dynamic margin delta_c: Lớp càng hiếm thì margin bảo vệ càng lớn
+        max_num = np.max(cls_num_arr)
+        margin = 0.3 * np.power(max_num / cls_num_arr, 0.12)
+        margin = np.clip(margin, 0.2, 1.5)
+        self.register_buffer('class_margins', torch.FloatTensor(margin))  # (C,)
+
+    def forward(self, x, y):
+        x = x.float()
+        y = y.float()
+        
+        weights = self.class_weights.to(dtype=x.dtype, device=x.device)
+        margins = self.class_margins.to(dtype=x.dtype, device=x.device)
+        
+        # Áp dụng dynamic margin cho nhãn dương của lớp hiếm
+        x_m = x - margins * y
+        
+        x_sigmoid = torch.sigmoid(x_m)
+        xs_pos = x_sigmoid
+        xs_neg = 1.0 - torch.sigmoid(x)
+        
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1.0)
+            
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1.0 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        loss = los_pos + los_neg
+        
+        # Asymmetric Focusing
+        if self.gamma_neg > 0 or self.gamma_pos > 0:
+            if self.disable_torch_grad_focal_loss:
+                torch_pos = xs_pos.detach()
+                torch_neg = xs_neg.detach()
+            else:
+                torch_pos = xs_pos
+                torch_neg = xs_neg
+            pt0 = torch_pos * y
+            pt1 = torch_neg * (1.0 - y)
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1.0 - y)
+            one_sided_w = torch.pow(1.0 - pt, one_sided_gamma)
+            loss *= one_sided_w
+            
+        # Áp dụng trọng số Class-Balanced w_c theo từng lớp (B, C) * (1, C)
+        loss = loss * weights.unsqueeze(0)
+        
+        return -loss.sum() / (x.size(0) * x.size(1) + 1e-8)
+
+
 class MaskedAsymmetricLoss(nn.Module):
     """
     Masked Asymmetric Loss for Multi-Label Classification.
@@ -405,5 +491,50 @@ class TextDistillationLoss(nn.Module):
         norm_learn = learnable_text_features / (learnable_text_features.norm(dim=-1, keepdim=True) + 1e-6)
         norm_ref = (ref_concept_features / (ref_concept_features.norm(dim=-1, keepdim=True) + 1e-6)).detach()
         return F.l1_loss(norm_learn, norm_ref, reduction='mean')
+
+
+class PrototypeVisualAlignmentLoss(nn.Module):
+    """
+    Prototype-guided Visual Alignment (PVA) Loss từ MPA-FER (arXiv:2506.21017).
+    
+    Neo các vector đặc trưng visual học được quanh Class Visual Prototypes p_c
+    được trích xuất cố định từ Frozen CLIP backbone.
+    
+    Hỗ trợ cả:
+    - Đơn nhãn (Single-label: RAER, CAER): index prototype tương ứng của class ground truth
+    - Đa nhãn (Multi-label: EMOTIC): trung bình có trọng số prototype của các active positive classes
+    """
+    def __init__(self, metric: str = 'l1'):
+        super().__init__()
+        self.metric = metric
+
+    def forward(self, visual_features: torch.Tensor, class_visual_prototypes: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            visual_features: (B, D) đặc trưng visual của batch
+            class_visual_prototypes: (C, D) prototype visual cố định của C lớp
+            targets: (B,) chỉ số lớp đơn nhãn hoặc (B, C) nhãn đa nhãn
+        """
+        norm_v = F.normalize(visual_features.float(), p=2, dim=-1)
+        norm_p = F.normalize(class_visual_prototypes.float(), p=2, dim=-1)
+
+        if targets.dim() == 1 or targets.dtype in (torch.int64, torch.int32):
+            # Single-label (RAER, CAER-S)
+            target_idx = targets.long().clamp(0, class_visual_prototypes.shape[0] - 1)
+            target_protos = norm_p[target_idx]  # (B, D)
+        else:
+            # Multi-label (EMOTIC): tính trung bình prototype của các nhãn dương tính
+            pos_mask = (targets > 0.5).float()  # (B, C)
+            denom = pos_mask.sum(dim=1, keepdim=True).clamp(min=1.0)
+            target_protos = torch.matmul(pos_mask, norm_p) / denom  # (B, D)
+            target_protos = F.normalize(target_protos, p=2, dim=-1)
+
+        if self.metric == 'l1':
+            return F.l1_loss(norm_v, target_protos.detach(), reduction='mean')
+        else:
+            # Cosine distance loss
+            cos_sim = torch.sum(norm_v * target_protos.detach(), dim=-1)
+            return (1.0 - cos_sim).mean()
+
 
 

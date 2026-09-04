@@ -5,6 +5,11 @@
 /CKPlus_Dataset/
 /DAiSEE/
 /Student_FER_Dataset/
+emotic_dataset/
+CAER_Video/
+outputs/
+scratch/
+.vscode/
 
 # Annotations (generated)
 daisee_annotations/

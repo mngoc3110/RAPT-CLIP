@@ -10,7 +10,6 @@ import torchvision
 import sys
 
 from utils.utils import AverageMeter, get_loss_weight, get_loss_weight_rampdown
-from utils.loss import SemanticLDLLoss
 
 class ModelEMA:
     def __init__(self, model, decay=0.999):
@@ -78,10 +77,10 @@ class Trainer:
                  dc_criterion=None, lambda_dc=0,
                  cad_criterion=None, lambda_cad=0,
                  text_distill_criterion=None, lambda_text=0,
-                 concept_prototypes=None,
+                 pva_criterion=None, lambda_pva=0,
+                 concept_prototypes=None, visual_class_prototypes=None,
                  mi_warmup=0, mi_ramp=0, mi_ramp_type='ramp_up',
-                 dc_warmup=0, dc_ramp=0, use_amp=False, grad_clip=1.0, mixup_alpha=0.0,
-                 use_ldl=False, ldl_warmup=0):
+                 dc_warmup=0, dc_ramp=0, use_amp=False, grad_clip=1.0, mixup_alpha=0.0):
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
@@ -97,7 +96,10 @@ class Trainer:
         self.lambda_cad = lambda_cad
         self.text_distill_criterion = text_distill_criterion
         self.lambda_text = lambda_text
+        self.pva_criterion = pva_criterion
+        self.lambda_pva = lambda_pva
         self.concept_prototypes = concept_prototypes.to(device) if concept_prototypes is not None else None
+        self.visual_class_prototypes = visual_class_prototypes.to(device) if visual_class_prototypes is not None else None
         self.mi_warmup = mi_warmup
         self.mi_ramp = mi_ramp
         self.mi_ramp_type = mi_ramp_type
@@ -106,9 +108,7 @@ class Trainer:
         self.use_amp = use_amp
         self.grad_clip = grad_clip
         self.mixup_alpha = mixup_alpha
-        self.use_ldl = use_ldl
-        self.ldl_warmup = ldl_warmup
-        print(f"DEBUG: Trainer initialized with use_ldl={use_ldl}, ldl_warmup={ldl_warmup}, lambda_cad={lambda_cad}, lambda_text={lambda_text}")
+        print(f"DEBUG: Trainer initialized with lambda_cad={lambda_cad}, lambda_text={lambda_text}, lambda_pva={lambda_pva}")
         
         # Initialize ModelEMA (decay=0.99 is better for small datasets like EMOTIC ~16K)
         self.ema = ModelEMA(self.model, decay=0.99)
@@ -170,9 +170,9 @@ class Trainer:
         losses = AverageMeter('Loss', ':.4e')
         mi_losses = AverageMeter('MI Loss', ':.4e')
         dc_losses = AverageMeter('DC Loss', ':.4e')
-        moco_losses = AverageMeter('MoCo Loss', ':.4e')
         cad_losses = AverageMeter('CAD Loss', ':.4e')
         text_losses = AverageMeter('TextDistill Loss', ':.4e')
+        pva_losses = AverageMeter('PVA Loss', ':.4e')
         war_meter = AverageMeter('WAR', ':6.2f')
         
         # Lists to store predictions for UAR calculation
@@ -195,17 +195,7 @@ class Trainer:
 
             dc_weight = get_loss_weight(int(epoch_str), self.dc_warmup, self.dc_ramp, self.lambda_dc)
             
-            # Determine effective LDL weight (warmup)
-            ldl_weight = 1.0
-            if self.use_ldl and int(epoch_str) < self.ldl_warmup:
-                ldl_weight = 0.0 # Disable LDL during warmup
-            
-            # MoCo weight display (typically fixed at 1.0 if enabled)
-            moco_weight = 0.0
-            if hasattr(self.model, 'args') and hasattr(self.model.args, 'use_moco') and self.model.args.use_moco:
-                moco_weight = 1.0
-                
-            weight_msg = f"--- Epoch {epoch_str}: MI={mi_weight:.4f}, DC={dc_weight:.4f}, LDL_Wt={ldl_weight:.1f}, MoCo={moco_weight:.1f}, CAD={self.lambda_cad:.2f}, TextDistill={self.lambda_text:.2f} ---"
+            weight_msg = f"--- Epoch {epoch_str}: MI={mi_weight:.4f}, DC={dc_weight:.4f}, CAD={self.lambda_cad:.2f}, TextDistill={self.lambda_text:.2f} ---"
             print(weight_msg)
             with open(self.log_txt_path, 'a') as f:
                 f.write(weight_msg + '\n')
@@ -239,7 +229,7 @@ class Trainer:
                     num_classes_expected = self.model.num_classes
                 elif hasattr(self.model, 'args') and hasattr(self.model.args, 'num_classes'):
                     num_classes_expected = self.model.args.num_classes
-                # Ensure target is float for BCE/ASL, long for CE/LDL
+                # Ensure target is float for multi-label (BCE/ASL/CB-ASL), long for single-label (CE/LDAM)
                 if hasattr(self.criterion, 'gamma_neg') or isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
                     target = target.float()
                 else:
@@ -271,9 +261,12 @@ class Trainer:
                         res_model = self.model(images_face, images_body)
                     
                     if len(res_model) == 5:
-                        output, learnable_text_features, hand_crafted_text_features, moco_logits, patch_features = res_model
+                        output, learnable_text_features, hand_crafted_text_features, _, patch_features = res_model
+                    elif len(res_model) == 4:
+                        output, learnable_text_features, hand_crafted_text_features, _ = res_model
+                        patch_features = None
                     else:
-                        output, learnable_text_features, hand_crafted_text_features, moco_logits = res_model
+                        output, learnable_text_features, hand_crafted_text_features = res_model
                         patch_features = None
                     
                     # DEBUG: Check model output for NaN
@@ -290,21 +283,7 @@ class Trainer:
                         processed_learnable_text_features = learnable_text_features.view(num_classes, num_prompts_per_class, -1).mean(dim=1)
 
                     # Calculate loss
-                    current_criterion = self.criterion
-                    if self.use_ldl and int(epoch_str) < self.ldl_warmup:
-                          current_criterion = torch.nn.CrossEntropyLoss()
-                    
-                    if isinstance(current_criterion, SemanticLDLLoss):
-                        # With multi-label Mixup, target is already pre-mixed (soft labels)
-                        # SemanticLDLLoss expects long indices for single-label mode.
-                        # For multi-label EMOTIC (float target), fall back to ASL.
-                        if target.dtype == torch.long:
-                            classification_loss = current_criterion(output, target, processed_learnable_text_features)
-                        else:
-                            classification_loss = self.criterion(output, target)
-                    else:
-                        # For ASL/BCE: target is already pre-mixed soft labels, single forward pass
-                        classification_loss = current_criterion(output, target)
+                    classification_loss = self.criterion(output, target)
                     
                     # DEBUG: Print details for the first batch of the first epoch
                     if is_train and int(epoch_str) == 0 and i == 0:
@@ -335,12 +314,7 @@ class Trainer:
                         loss += dc_weight * dc_loss
                         dc_losses.update(dc_loss.item(), target.size(0))
 
-                    # MoCo Loss
-                    if is_train and moco_logits is not None:
-                         moco_target = torch.zeros(moco_logits.size(0), dtype=torch.long).to(self.device)
-                         moco_loss = torch.nn.CrossEntropyLoss()(moco_logits, moco_target)
-                         loss += moco_loss
-                         moco_losses.update(moco_loss.item(), target.size(0))
+
 
                     # Concept-guided Attention Distillation (CAD) Loss
                     if is_train and self.cad_criterion is not None and patch_features is not None:
@@ -357,6 +331,12 @@ class Trainer:
                             text_loss = self.text_distill_criterion(processed_learnable_text_features, ref_concepts)
                             loss += self.lambda_text * text_loss
                             text_losses.update(text_loss.item(), target.size(0))
+
+                    # Prototype-guided Visual Alignment (PVA) Loss from MPA-FER
+                    if is_train and self.pva_criterion is not None and self.visual_class_prototypes is not None and hasattr(self.model, 'last_video_features'):
+                        pva_loss = self.pva_criterion(self.model.last_video_features, self.visual_class_prototypes, target)
+                        loss += self.lambda_pva * pva_loss
+                        pva_losses.update(pva_loss.item(), target.size(0))
 
                 if is_train:
                     self.optimizer.zero_grad()
@@ -381,15 +361,13 @@ class Trainer:
                 is_multilabel = target.dtype == torch.float32
                 if is_multilabel:
                     preds = torch.sigmoid(output)
-                    # For multi-label, we don't have a single correct class
-                    acc = 0.0
                 else:
                     preds = output.argmax(dim=1)
                     correct_preds = preds.eq(target).sum().item()
                     acc = (correct_preds / target.size(0)) * 100.0
+                    war_meter.update(acc, target.size(0))
 
                 losses.update(loss.item(), target.size(0))
-                war_meter.update(acc, target.size(0))
 
                 # Collect preds for UAR/mAP
                 all_preds_list.append(preds.cpu().detach())
@@ -452,7 +430,7 @@ class Trainer:
         class_names = get_dataset_class_names(dataset_name, num_classes=num_classes)
 
         prefix = f"{mode_str} Epoch: [{epoch_str}]"
-        if all_targets.dtype == torch.float32: # Multi-label
+        if all_targets.dtype == torch.float32: # Multi-label (EMOTIC)
             # Binarize train targets if Mixup was applied (soft labels > 0.5 → 1)
             # Validation targets are always binary so this is a no-op for val
             eval_targets = (all_targets > 0.5).float() if is_train else all_targets
@@ -460,12 +438,19 @@ class Trainer:
             map_score = metrics_dict['macro_map']
             
             logging.info(f"{prefix} * mAP: {map_score:.3f}")
-            print(f"\n{report_str}")
+            if not is_train:
+                # On validation, print detailed per-class AP breakdown
+                print(f"\n{report_str}")
+            else:
+                # On train, print clean single-line summary (don't spam 40-line table every train epoch)
+                print(f"\n{prefix} * Train mAP: {map_score:.2f}% | Loss: {losses.avg:.4f}")
+
             with open(self.log_txt_path, 'a') as f:
-                f.write('Current mAP: {map_score:.3f}'.format(map_score=map_score) + '\n')
-                f.write(report_str + '\n')
-            return map_score, map_score, losses.avg, None
-        else: # Single-label
+                f.write(f'{prefix} mAP: {map_score:.3f} | Loss: {losses.avg:.4f}\n')
+                if not is_train:
+                    f.write(report_str + '\n')
+            return None, map_score, losses.avg, None
+        else: # Single-label (RAER, etc.)
             report_str, metrics_dict = format_confusion_matrix_report(all_targets, all_preds, class_names=class_names)
             war = metrics_dict['war']
             uar = metrics_dict['uar']
