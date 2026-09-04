@@ -40,15 +40,23 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
+DATA_DIR="/kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn"
+TRAIN_ANN="$DATA_DIR/train_bbox.txt"
+[ ! -f "$TRAIN_ANN" ] && TRAIN_ANN="$DATA_DIR/train.txt"
+VAL_ANN="$DATA_DIR/val_bbox.txt"
+[ ! -f "$VAL_ANN" ] && VAL_ANN="$DATA_DIR/val.txt"
+TEST_ANN="$DATA_DIR/test_bbox.txt"
+[ ! -f "$TEST_ANN" ] && TEST_ANN="$DATA_DIR/test.txt"
+
 python main.py \
     --mode train \
     --dataset EMOTIC \
     --gpu 0 \
     --exper-name EMOTIC-FrameLevelFusion \
-    --root-dir /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/cvpr_emotic/cvpr_emotic \
-    --train-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/train.txt \
-    --val-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/val.txt \
-    --test-annotation /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/test.txt \
+    --root-dir "$DATA_DIR/cvpr_emotic/cvpr_emotic" \
+    --train-annotation "$TRAIN_ANN" \
+    --val-annotation "$VAL_ANN" \
+    --test-annotation "$TEST_ANN" \
     --clip-path ViT-B/16 \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \

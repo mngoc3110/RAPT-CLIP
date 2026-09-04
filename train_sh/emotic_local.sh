@@ -12,15 +12,23 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
+DATA_DIR="emotic_dataset"
+TRAIN_ANN="$DATA_DIR/train_bbox.txt"
+[ ! -f "$TRAIN_ANN" ] && TRAIN_ANN="$DATA_DIR/train.txt"
+VAL_ANN="$DATA_DIR/val_bbox.txt"
+[ ! -f "$VAL_ANN" ] && VAL_ANN="$DATA_DIR/val.txt"
+TEST_ANN="$DATA_DIR/test_bbox.txt"
+[ ! -f "$TEST_ANN" ] && TEST_ANN="$DATA_DIR/test.txt"
+
 python main.py \
     --mode train \
     --dataset EMOTIC \
     --gpu mps \
     --exper-name EMOTIC-Local-MPS \
-    --root-dir emotic_dataset/cvpr_emotic \
-    --train-annotation emotic_dataset/train.txt \
-    --val-annotation emotic_dataset/val.txt \
-    --test-annotation emotic_dataset/test.txt \
+    --root-dir "$DATA_DIR/cvpr_emotic" \
+    --train-annotation "$TRAIN_ANN" \
+    --val-annotation "$VAL_ANN" \
+    --test-annotation "$TEST_ANN" \
     --clip-path ViT-B/32 \
     --bounding-box-face emotic_dataset/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body emotic_dataset/emotic_body_bboxes.json \

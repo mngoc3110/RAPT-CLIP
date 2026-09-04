@@ -39,12 +39,18 @@ class VideoRecord(object):
     @property       # 标签
     def label(self):
         # Support EMOTIC multi-label (comma separated string -> float tensor)
-        raw_label = self._data[-1]
+        raw_label = self._data[2] if (len(self._data) >= 4 and isinstance(self._data[3], (list, tuple))) else self._data[-1]
         if isinstance(raw_label, torch.Tensor):
             return raw_label
         if isinstance(raw_label, str) and ',' in raw_label:
             return torch.tensor([float(x) for x in raw_label.split(',')], dtype=torch.float32)
         return int(raw_label)
+
+    @property       # Bounding box (nếu có trực tiếp từ file annotation như train_bbox.txt)
+    def bbox(self):
+        if len(self._data) >= 4 and isinstance(self._data[3], (list, tuple)):
+            return self._data[3]
+        return None
 
 class VideoDataset(data.Dataset):
     def __init__(self, list_file, num_segments, duration, mode, transform, image_size,bounding_box_face,bounding_box_body, crop_body=False, mask_context_body=False, root_dir="", num_classes=8):
@@ -164,7 +170,13 @@ class VideoDataset(data.Dataset):
                     path = ' '.join(parts[:label_idx])
                     label = parts[label_idx]
                     num_frames = 1
-                    self.sample_list.append([path, num_frames, label])
+                    bbox = None
+                    if len(parts) >= label_idx + 5:
+                        try:
+                            bbox = [int(float(x)) for x in parts[label_idx+1:label_idx+5]]
+                        except (ValueError, TypeError):
+                            bbox = None
+                    self.sample_list.append([path, num_frames, label, bbox])
                 else:
                     parts = line.strip().split(' ')
                     if len(parts) > 3:
@@ -172,7 +184,7 @@ class VideoDataset(data.Dataset):
                         path = ' '.join(parts[:-2])
                         num_frames = parts[-2]
                         label = parts[-1]
-                        self.sample_list.append([path, num_frames, label])
+                        self.sample_list.append([path, num_frames, label, None])
                     else:
                         self.sample_list.append(parts)
 
@@ -202,14 +214,22 @@ class VideoDataset(data.Dataset):
                 path = path.replace('CAER_Video/', '')
                 path = path.replace('dataset/RAER/', 'RAER/')
             
+            bbox = None
             if len(item) == 2:
                 num_frames = 1
                 label = item[1]
+            elif len(item) == 4 and (isinstance(item[3], list) or item[3] is None):
+                num_frames = item[1]
+                label = item[2]
+                bbox = item[3]
             elif len(item) >= 3:
                 num_frames = int(item[-2])
                 label = item[-1]
                 
-            self.video_list.append(VideoRecord([os.path.join(self.root_dir, path), num_frames, label]))
+            row_data = [os.path.join(self.root_dir, path), num_frames, label]
+            if bbox is not None:
+                row_data.append(bbox)
+            self.video_list.append(VideoRecord(row_data))
         print(('video number:%d' % (len(self.video_list))))
 
     def _get_train_indices(self, record):
@@ -345,36 +365,16 @@ class VideoDataset(data.Dataset):
                     if matched_video_key:
                         break
 
-                # 3. Retrieve Box
-                # For EMOTIC (single image), the box is stored directly on the key.
-                # For RAER/CAER (video), the box is stored per frame_key.
+                # 3. Retrieve Body Box (Prioritize sample-level bbox from annotation file)
                 frame_key = f"{p}.jpg"  # Standard frame key format for video datasets
-                box = None
-                if matched_video_key:
-                    entry = self.boxs[matched_video_key]
-                    if isinstance(entry, dict):
-                        # Video dataset: lookup by frame index
-                        if frame_key in entry:
-                            box = entry[frame_key]
-                    elif isinstance(entry, list):
-                        # EMOTIC single-image: box is stored directly as [x1,y1,x2,y2]
-                        box = entry
-
-                # Debug logging for missing boxes (only once per video to avoid spam)
-                if box is None and i == 0 and p == indices[0]:
-                    pass
-
-                # 4. Face Detection (Crop)
-                # Reduce margin to 10 (Tight Crop) to zoom in on micro-expressions (eyebrows/eyes)
-                # This helps separate Neutral vs Confusion
-                # IMPORTANT FIX: Return full image if no box found (Fallback)
-                img_pil_face = self._face_detect(img_pil, box, margin=10, mode='face')
-
-                # 5. Body Crop & Retrieval
                 img_pil_body = img_pil  # Default to full image
                 body_box = None
-                if self.crop_body and hasattr(self, 'body_boxes'):
-                    # Same key lookup logic for body_boxes
+                if record.bbox is not None:
+                    # Precise sample-level bounding box (from train_bbox.txt)
+                    # Solves the multi-person image collision where multiple people share one image path!
+                    body_box = record.bbox
+                elif self.crop_body and hasattr(self, 'body_boxes'):
+                    # Fallback to dictionary lookup by path
                     matched_body_key = None
                     for try_key in [video_key_with_ext, video_key_no_ext]:
                         if try_key in self.body_boxes:
@@ -403,6 +403,28 @@ class VideoDataset(data.Dataset):
                     if right > left and lower > upper:
                         if self.crop_body:
                             img_pil_body = img_pil.crop((left, upper, right, lower))
+
+                # 4. Face Detection & Crop
+                # Lookup face bbox in self.boxs
+                box = None
+                if matched_video_key:
+                    entry = self.boxs[matched_video_key]
+                    if isinstance(entry, dict):
+                        if frame_key in entry:
+                            box = entry[frame_key]
+                    elif isinstance(entry, list):
+                        box = entry
+
+                # If face detection was missing, but we have body_box:
+                # Use the upper 35% of the person's body (head/face region) as fallback
+                # instead of falling back to the entire uncropped scene (which contains other people)
+                if box is None and body_box is not None:
+                    b_left, b_upper, b_right, b_lower = body_box
+                    head_lower = int(b_upper + (b_lower - b_upper) * 0.35)
+                    face_box = [b_left, b_upper, b_right, max(b_upper + 2, head_lower)]
+                    img_pil_face = self._face_detect(img_pil, face_box, margin=0, mode='face')
+                else:
+                    img_pil_face = self._face_detect(img_pil, box, margin=10, mode='face')
 
                 # Context with optional Body Masking (CAER-Net style: Context = Image \ Body)
                 img_pil_context = img_pil
