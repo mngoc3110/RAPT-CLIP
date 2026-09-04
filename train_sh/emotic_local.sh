@@ -8,8 +8,7 @@
 #   --workers 0          : MPS không hỗ trợ multiprocessing dataloader
 #   --clip-path ViT-B/32 : nhẹ hơn ViT-B/16, phù hợp RAM local
 #   Không dùng --use-cgla: CGLA cần thêm 1 ViT forward pass/batch → 2x chậm hơn
-#   Không dùng --lambda-cad: CAD loss cần patch features từ CGLA
-#   Classifier: ml_head (512→256→26) — không dùng cosine similarity
+#   Classifier: CLIP Cosine Similarity + learnable class_bias (per-class threshold calibration)
 
 export CUDA_VISIBLE_DEVICES=0
 

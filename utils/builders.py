@@ -49,7 +49,7 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
                 param.requires_grad = True
 
     trainable_params_keywords = ["prompt_learner", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "modality_importance", "adaptive_gate", "gate_proj",
-                                  "ml_head"]       # learned multi-label classifier (per-class thresholds, EMOTIC only)
+                                  "class_bias"]    # learnable per-class bias for EMOTIC threshold calibration
     if getattr(args, 'temporal_layers', 1) > 0 and getattr(args, 'num_segments', 1) > 1:
         trainable_params_keywords += ["temporal_net", "temporal_net_body"]
     # q2l_head is managed by Generate_Model.__init__ based on use_q2l flag — do NOT force here
