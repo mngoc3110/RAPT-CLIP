@@ -1,4 +1,3 @@
-from torch import nn
 from models.Temporal_Model import *
 from models.Prompt_Learner import *
 from models.Text import class_descriptor_5_only_face
@@ -194,19 +193,39 @@ class GenerateModel(nn.Module):
             self.cmaf = CrossModalAttentionFusion(dim=512, num_heads=4, dropout=0.1, use_context=self.use_context, context_gating=self.is_multilabel)
 
         # ==================== Multi-Label Class Bias (EMOTIC) ====================
-        # FIXED (non-learnable) log-odds prior bias per class, computed from dataset statistics.
-        # Making this learnable collapses training to predict class frequency priors.
-        # Formula: log(p / (1-p)) where p = class frequency. Initialized from EMOTIC class frequencies.
-        # This can be overridden via model.set_class_prior(freq_vector) after model construction.
         if self.is_multilabel:
             num_cls = self.num_classes if hasattr(self, 'num_classes') else len(input_text)
-            # Default: uniform prior matching typical multi-label sparsity (p=0.1 → logit=-2.2)
-            prior_logit = torch.full((num_cls,), -2.2)
-            # Make it a learnable parameter again. ASL loss creates a bias offset that is DIFFERENT
-            # from the dataset prior. If class_bias is fixed, the text embeddings are forced
-            # to learn this bias offset, destroying their semantic meaning (catastrophic forgetting).
-            self.class_bias = nn.Parameter(prior_logit)
-            print(f"=> Initialized FIXED class bias (log-odds prior, p=0.1) for {num_cls} multi-label classes")
+
+            # ===== Multi-Label Classifier Head (EMOTIC) =====
+            # Design rationale:
+            #   Cosine similarity ∈ [-1/τ, 1/τ] (e.g. [-14,14] at τ=0.07) is bounded
+            #   and shares a SINGLE scale across all 26 classes — impossible to set
+            #   independent decision thresholds (dominant classes like Engagement saturate
+            #   sigmoid at 0.997 while rare Embarrassment still gets ~0.80).
+            #
+            #   ml_head learns 26 × 256 independent weight vectors + 26 bias terms.
+            #   Each bias acts as a per-class threshold calibrated directly to class
+            #   frequency — exactly how Kosti (CVPR'17), EmotiCon (CVPR'20), CECNet (2026)
+            #   all structure their EMOTIC classifiers.
+            #
+            #   Text features (prompt_learner) are still computed and used by:
+            #     - CAD loss  (patch ↔ concept prototype alignment)
+            #     - TextDistill loss (keeps prompts near CLIP semantic space)
+            #   so the prompt_learner still receives gradients and improves features.
+            self.ml_head = nn.Sequential(
+                nn.Linear(512, 256),
+                nn.GELU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, num_cls)
+            )
+            # Init near-zero so epoch-0 logits ≈ 0 (sigmoid ≈ 0.5), avoiding early collapse
+            with torch.no_grad():
+                nn.init.xavier_uniform_(self.ml_head[0].weight, gain=0.1)
+                self.ml_head[0].bias.zero_()
+                nn.init.xavier_uniform_(self.ml_head[3].weight, gain=0.1)
+                self.ml_head[3].bias.zero_()
+            print(f"=> EMOTIC: ml_head (512→256→{num_cls}) is the SOLE classifier (no cosine similarity).")
+            print(f"   Text encoder retained for CAD + TextDistill regularization only.")
 
         # ==================== Q2L Multi-Label Head (EMOTIC) ====================
         if self.is_multilabel:
@@ -242,17 +261,25 @@ class GenerateModel(nn.Module):
             self.register_buffer('label_cooccurrence', torch.zeros(nc, nc))
 
     def set_class_prior(self, freq_vector: torch.Tensor):
-        """Update the fixed class_bias buffer from actual training data class frequencies.
+        """Update the ml_head classifier bias from actual training data class frequencies.
         
-        Call this once after model construction, before training.
-        freq_vector: (C,) float tensor with values in [0, 1] = class frequency p_c in training data.
-        bias = log(p / (1-p)), clipped to avoid ±inf.
+        This is CRITICAL for multi-label training. If bias starts at 0 (sigmoid=0.5),
+        the loss for rare classes (p=0.01) is massive, and the optimizer will brutally
+        push the weights negative, killing the rare classes permanently (0 predictions).
+        By initializing bias = log(p / (1-p)), the network starts with the correct prior.
         """
-        if hasattr(self, 'class_bias'):
-            freq = freq_vector.clamp(0.05, 0.50)
+        if hasattr(self, 'ml_head'):
+            freq = freq_vector.clamp(0.01, 0.95)  # wide range: handles p=0.008 to p=0.52+
             log_odds = torch.log(freq / (1.0 - freq))
-            self.class_bias.data.copy_(log_odds)
-            print(f"=> Updated class_bias (learnable log-odds prior) from training data: min={log_odds.min():.2f}, max={log_odds.max():.2f}")
+            
+            # ml_head[3] is the final nn.Linear(256, C)
+            with torch.no_grad():
+                self.ml_head[3].bias.copy_(log_odds)
+                
+            print(f"=> EMOTIC: Initialized ml_head bias (log-odds prior) from training data:")
+            print(f"   min={log_odds.min():.2f} (Rare class), max={log_odds.max():.2f} (Common class)")
+
+
 
     def init_q2l_from_text(self):
         """Initialize Q2L label queries from hand-crafted CLIP text features.
@@ -379,45 +406,48 @@ class GenerateModel(nn.Module):
             patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
 
         ################# Classification ###################
-        if getattr(self.args, 'use_cgla', False) and patch_features is not None:
-            # ===== CGLA: Global-Local Alignment (MPA-FER) =====
-            # If video t > 1: reshape patch_features to (n, t, num_patches, dim)
+        if self.is_multilabel and hasattr(self, 'ml_head'):
+            # ===== EMOTIC Multi-Label: Learned Head (sole classifier) =====
+            # Cosine similarity is NOT used as logits for multi-label tasks.
+            # ml_head learns per-class thresholds independently from the 512-dim
+            # CLIP visual features produced by CMAF fusion.
+            #
+            # Text features (text_features, hand_crafted_text_features) are still
+            # computed above and returned so the trainer can compute:
+            #   - CAD loss:       patch ↔ concept prototype alignment
+            #   - TextDistill:    keep learnable prompts close to CLIP text space
+            # These losses flow gradients back through prompt_learner without
+            # requiring cosine similarity in the classification path.
+            output = self.ml_head(video_features)  # (B, C)
+
+        elif getattr(self.args, 'use_cgla', False) and patch_features is not None:
+            # ===== CGLA: Global-Local Alignment — single-label datasets (RAER, CAER) =====
             if t > 1:
                 cgla_patches = patch_features.view(n, t, -1, patch_features.shape[-1])
             else:
                 cgla_patches = patch_features.view(n, -1, patch_features.shape[-1])
-            
             if self.is_ensemble:
                 text_input = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
             else:
                 text_input = text_features
-
             output = self.cgla_head(video_features, cgla_patches, text_input)
+
         elif getattr(self.args, 'use_q2l', False) and self.is_multilabel:
-            # ===== Q2L Multi-Label Path (Optional) =====
+            # ===== Q2L Multi-Label Path (Optional, kept for ablation) =====
             if not self._q2l_initialized:
                 self.init_q2l_from_text()
             output = self.q2l_head(video_features)
+
         else:
-            # ===== Standard CLIP Prompt Alignment (Single-Label & Multi-Label) =====
+            # ===== Standard CLIP Cosine Similarity — single-label datasets =====
             if self.is_ensemble:
-                # Reshape text features for ensembling: (C*P, D) -> (C, P, D)
                 text_features_ens = text_features.view(self.num_classes, self.num_prompts_per_class, -1)
                 text_features_ens = text_features_ens / (text_features_ens.norm(dim=-1, keepdim=True) + 1e-6)
-                
-                # Compute logits per prompt: (B, D) @ (D, P, C) -> (B, P, C)
                 logits = torch.einsum('bd,cpd->bcp', video_features, text_features_ens)
-                
-                # Average the logits across the prompts for each class
                 output = torch.mean(logits, dim=2) / self.args.temperature
             else:
                 output = (video_features @ text_features.t()) / self.args.temperature
 
-        # APPLY CLASS BIAS to BOTH paths for ASL stability
-        if hasattr(self, 'class_bias') and self.is_multilabel:
-            if torch.isnan(self.class_bias).any(): print("[DEBUG] class_bias contains NaN!")
-            output = output + self.class_bias
-                
         if torch.isnan(output).any(): print("[DEBUG] NaN detected in final output!")
 
         if getattr(self.args, 'lambda_cad', 0) > 0:

@@ -1,35 +1,41 @@
 #!/bin/bash
 # EMOTIC Training Script - Multi-label FrameLevelFusion
-# Target mAP: > 35%
-
+# Target mAP: > 35-40%
+#
 # ==========================================
-# HYPERPARAMETER OPTIMIZATION FOR EMOTIC (Target mAP: > 35-40%)
+# HYPERPARAMETER OPTIMIZATION FOR EMOTIC
 # ==========================================
-# Dataset: EMOTIC (26 classes, multi-label)
-# Features:
-#   - CMAF Fusion (Face + Body + Full Context)
-#   - Calibrated ASL Loss (gamma_neg=2.0 to prevent tail-class suppression)
-#   - Full Unmasked Scene Context (preserves human-object & social interactions)
-#   - ViT-B/16 FROZEN (prevents representation drift on small dataset)
-#   - Prompt Ensemble (detailed LLM lexicons + CoOp context tuning)
-#   - Modality Dropout (p=0.1) & DropPath (0.1) to eliminate overfitting
+# Dataset: EMOTIC (26 classes, multi-label, 16K images)
 #
-# KEY CHANGES vs prev run (stuck at 31.32%):
+# ARCHITECTURE:
+#   - Triple-Stream CMAF Fusion (Face + Body + Full Scene Context)
+#   - ViT-B/16 FROZEN backbone (prevents overfitting on 16K images)
+#   - Prompt Ensemble (5 prompts per class) + class-specific CoOp contexts
+#   - CGR (K-means concept generation) + CGLA (cross-modal patch alignment)
+#   - MPI (multi-perspective self-attention pooling at inference)
 #
-# 1. UNMASKED SCENE CONTEXT (REMOVED --mask-context-body)
-#    Masking the body with gray (128,128,128) destroyed critical interaction cues
-#    (holding items, hugging, shaking hands). Full scene preserves interactive semantics.
+# LOSS STRATEGY:
+#   - Calibrated ASL: gamma_neg=2.0 (was 4.0 → suppressed rare classes)
+#     gamma_neg=4.0 + 1/0.07 temperature = 57x effective scaling on negatives.
+#     Reduces to 28x at gamma_neg=2.0 → balanced gradients for rare labels.
+#   - CAD (Concept Attention Distillation) λ=0.1: aligns patch attention
+#     with concept prototypes, improves rare-class localization.
+#   - TextDistill λ=0.1: keeps learnable prompts close to CLIP semantic space.
 #
-# 2. CALIBRATED ASL (gamma_neg=2.0 vs prev 4.0)
-#    Previous gamma_neg=4.0 combined with 1/0.07 temperature scale suppressed
-#    rare classes (Embarrassment, Fear, Esteem, Yearning AP < 10%).
-#    gamma_neg=2.0 allows balanced gradients for long-tail multi-labels.
+# REGULARIZATION:
+#   - freeze-image-encoder: CRITICAL for 16K dataset (prevents backbone drift)
+#   - drop-path-rate=0.1: stochastic depth for ViT backbone stability
+#   - weight-decay=0.02: stronger L2 for adapters/projection head
+#   - lr-prompt-learner=5e-6: slow down (was 1e-5 → prompt overfitting by Ep3)
+#   - mixup-alpha=0.4: interpolates rare label vectors into each batch
+#   - modality-dropout=0.1: forces each stream to be self-sufficient
+#   - use-weighted-sampler: upsamples rare-class images each epoch
 #
-# 3. REGULARIZATION & OVERFITTING MITIGATION
-#    - drop-path-rate: 0.0 -> 0.1
-#    - weight-decay: 0.01 -> 0.02
-#    - lr-prompt-learner: 1e-5 -> 5e-6 (slow down prompt overfitting)
-#    - lr-adapter: 3e-5 -> 2e-5
+# CONTEXT STREAM:
+#   - NO --mask-context-body! (removed from previous run)
+#     In CAER (TV scenes): masking body forces attention to room background.
+#     In EMOTIC (real-world photos): masking destroys interaction cues:
+#     hugs, handshakes, trophy-holding, physical contact → Full scene is better.
 # ==========================================
 
 export CUDA_VISIBLE_DEVICES=0
@@ -47,7 +53,7 @@ python main.py \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
     --epochs 40 \
-    --batch-size 8 \
+    --batch-size 16 \
     --print-freq 50 \
     --grad-clip 1.0 \
     --optimizer AdamW \
@@ -57,19 +63,19 @@ python main.py \
     --asl-clip 0.05 \
     --use-cgla \
     --cgla-topk 16 \
-    --cgla-alpha 0.5 \
-    --lr 2e-5 \
-    --lr-image-encoder 0 \
-    --freeze-image-encoder \
-    --lr-prompt-learner 1e-5 \
-    --lr-adapter 3e-5 \
-    --weight-decay 0.02 \
+    --cgla-alpha 1.0 \
+    --lr 1e-4 \
+    --lr-image-encoder 5e-6 \
+    --lr-prompt-learner 2e-5 \
+    --lr-adapter 1e-4 \
+    --weight-decay 0.05 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda-cad 0.0 \
-    --lambda-text 0.0 \
+    --lambda-cad 0.1 \
+    --lambda-text 0.1 \
     --use-mpi \
     --use-cgr \
+    --use-weighted-sampler \
     --contexts-number 8 \
     --text-type prompt_ensemble \
     --num-segments 1 \
@@ -77,10 +83,9 @@ python main.py \
     --fusion-type cmaf \
     --use-context \
     --crop-body \
-    --mask-context-body \
-    --modality-dropout 0.1 \
-    --mixup-alpha 0.2 \
-    --drop-path-rate 0.0 \
+    --modality-dropout 0.2 \
+    --mixup-alpha 0.0 \
+    --drop-path-rate 0.1 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07

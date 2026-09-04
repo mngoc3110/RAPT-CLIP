@@ -48,7 +48,8 @@ def build_model(args: argparse.Namespace, input_text: list) -> torch.nn.Module:
             if "image_encoder" in name:
                 param.requires_grad = True
 
-    trainable_params_keywords = ["prompt_learner", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "modality_importance", "adaptive_gate", "gate_proj"]
+    trainable_params_keywords = ["prompt_learner", "project_fc", "face_adapter", "classifier", "cross_attn", "cmaf", "gate_fc", "modality_importance", "adaptive_gate", "gate_proj",
+                                  "ml_head"]       # learned multi-label classifier (per-class thresholds, EMOTIC only)
     if getattr(args, 'temporal_layers', 1) > 0 and getattr(args, 'num_segments', 1) > 1:
         trainable_params_keywords += ["temporal_net", "temporal_net_body"]
     # q2l_head is managed by Generate_Model.__init__ based on use_q2l flag — do NOT force here
@@ -183,22 +184,43 @@ def build_dataloaders(args: argparse.Namespace) -> Tuple[torch.utils.data.DataLo
     shuffle = True
     if args.use_weighted_sampler:
         print("=> Using WeightedRandomSampler.")
-        class_counts = get_class_counts(train_annotation_file_path)
-        class_weights = 1. / torch.tensor(class_counts, dtype=torch.float)
-        
-        # Create a weight for each sample
-        sample_weights = []
-        raw_labels = []
-        with open(train_annotation_file_path, 'r') as f:
-            for line in f:
-                raw_labels.append(int(line.strip().split()[-1]))
-                
-        min_label = min(raw_labels) if raw_labels else 0
-        for label in raw_labels:
-            sample_weights.append(class_weights[label - min_label])
-        
+        is_multilabel_dataset = (args.dataset == "EMOTIC")
+        if is_multilabel_dataset:
+            # EMOTIC: multi-hot labels (e.g., "0,1,0,...,1 x1 y1 x2 y2")
+            # Strategy: weight each sample by 1 / freq_of_rarest_positive_label.
+            # This up-samples images that contain rare classes (Embarrassment, Fear, etc.),
+            # giving the model more balanced exposure across all 26 categories.
+            from dataloader.video_dataloader import VideoRecord
+            all_records = train_data.video_list  # VideoRecord objects with .label tensor
+            # Compute per-class frequencies
+            all_labels_np = torch.stack([r.label for r in all_records]).numpy()  # (N, C)
+            class_freq = all_labels_np.mean(axis=0)  # (C,) in [0,1]
+            inv_freq = 1.0 / (class_freq + 1e-6)    # rare class → high weight
+            # Per sample: weight = max over its positive classes of 1/freq
+            sample_weights = []
+            for rec in all_records:
+                label_np = rec.label.numpy()  # (C,) binary
+                pos_indices = label_np.nonzero()[0]
+                if len(pos_indices) > 0:
+                    w = float(inv_freq[pos_indices].max())
+                else:
+                    w = 1.0  # no positive label (shouldn't happen)
+                sample_weights.append(w)
+            sample_weights = torch.tensor(sample_weights, dtype=torch.float)
+        else:
+            # Single-label datasets (RAER, CAER-S, DAiSEE, etc.)
+            class_counts = get_class_counts(train_annotation_file_path)
+            class_weights = 1. / torch.tensor(class_counts, dtype=torch.float)
+            raw_labels = []
+            with open(train_annotation_file_path, 'r') as f:
+                for line in f:
+                    raw_labels.append(int(line.strip().split()[-1]))
+            min_label = min(raw_labels) if raw_labels else 0
+            sample_weights = torch.tensor(
+                [class_weights[label - min_label] for label in raw_labels], dtype=torch.float
+            )
         sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights))
-        shuffle = False # Sampler and shuffle are mutually exclusive
+        shuffle = False  # sampler and shuffle are mutually exclusive
 
     train_loader = torch.utils.data.DataLoader(
         train_data, batch_size=args.batch_size, shuffle=shuffle, sampler=sampler,

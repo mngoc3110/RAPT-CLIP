@@ -361,13 +361,11 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # class_bias is LEARNABLE (lr=1e-3) initialized from a soft empirical log-odds prior.
-            # Making it learnable allows ASL loss to dynamically adjust class intercepts during training
-            # without permanently choking rare classes.
-            if hasattr(model, 'class_bias'):
-                model.class_bias.requires_grad_(True)
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
-                print("=> class_bias is LEARNABLE (lr=1e-3) to absorb ASL intercept offsets.")
+            # ml_head: learned multi-label linear classifier (26 independent per-class thresholds).
+            # Higher LR than adapters — starts from near-zero init, needs to learn fast.
+            if hasattr(model, 'ml_head'):
+                optimizer_grouped_parameters.append({"params": list(model.ml_head.parameters()), "lr": 1e-4})
+                print("=> ml_head added to optimizer (lr=1e-4): learned per-class threshold classifier.")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -445,11 +443,11 @@ def run_training(args: argparse.Namespace) -> None:
             # Do NOT zero it out! If it is zero, CLIP's high initial cosine similarities 
             # will push p -> 1.0, and ASL's (1-p)^4 focal term will cause gradients to vanish!
             # Set class_bias from ACTUAL training data frequencies (not uniform -2.2)
-            # This ensures Engagement (49%) gets bias~-0.04, Embarrassment (0.8%) gets bias~-4.82
-            if hasattr(model, 'class_bias') and hasattr(model, 'set_class_prior'):
+            # Call set_class_prior to initialize the ml_head bias terms with the empirical
+            # class frequency log-odds. This prevents early collapse in multi-label training.
+            if hasattr(model, 'ml_head') and hasattr(model, 'set_class_prior'):
                 freq_tensor = torch.from_numpy(class_freq).float()
                 model.set_class_prior(freq_tensor)
-                print(f"=> class_bias initialized from ACTUAL training data frequencies.")
 
 
     trainer = Trainer(model, criterion, optimizer, scheduler, args.device, log_txt_path, 
