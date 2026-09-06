@@ -52,7 +52,7 @@ python main.py \
     --mode train \
     --dataset EMOTIC \
     --gpu 0 \
-    --exper-name EMOTIC-FrameLevelFusion \
+    --exper-name EMOTIC-FrameLevelFusion-Optimized \
     --root-dir "$DATA_DIR/cvpr_emotic/cvpr_emotic" \
     --train-annotation "$TRAIN_ANN" \
     --val-annotation "$VAL_ANN" \
@@ -60,24 +60,26 @@ python main.py \
     --clip-path ViT-B/16 \
     --bounding-box-face /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_face_bboxes_mtcnn.json \
     --bounding-box-body /kaggle/input/datasets/bearmn/emotic-dataset-rapt-clip-bearmn/emotic_body_bboxes.json \
-    --epochs 40 \
-    --batch-size 8 \
+    --epochs 20 \
+    --batch-size 16 \
     --print-freq 50 \
+    --use-amp \
     --grad-clip 1.0 \
     --optimizer AdamW \
-    --loss-type asl \
+    --loss-type cb_asl \
     --asl-gamma-neg 2.0 \
     --asl-gamma-pos 0.0 \
     --asl-clip 0.05 \
+    --freeze-image-encoder \
     --lr 2e-5 \
-    --lr-image-encoder 1e-6 \
-    --lr-prompt-learner 1e-5 \
+    --lr-image-encoder 0 \
+    --lr-prompt-learner 5e-6 \
     --lr-adapter 3e-5 \
-    --weight-decay 0.01 \
+    --weight-decay 0.02 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda-cad 0.0 \
-    --lambda-text 0.0 \
+    --lambda-cad 0.1 \
+    --lambda-text 0.1 \
     --mi-warmup 0 \
     --dc-warmup 0 \
     --mi-ramp 0 \
@@ -91,10 +93,9 @@ python main.py \
     --fusion-type cmaf \
     --use-context \
     --crop-body \
-    --mask-context-body \
-    --modality-dropout 0.1 \
-    --mixup-alpha 0.0 \
-    --drop-path-rate 0.0 \
+    --modality-dropout 0.15 \
+    --mixup-alpha 0.4 \
+    --drop-path-rate 0.1 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07

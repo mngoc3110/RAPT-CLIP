@@ -38,19 +38,20 @@ python main.py \
     --print-freq 1000 \
     --grad-clip 1.0 \
     --optimizer AdamW \
-    --loss-type asl \
+    --loss-type cb_asl \
     --asl-gamma-neg 2.0 \
     --asl-gamma-pos 0.0 \
     --asl-clip 0.05 \
+    --freeze-image-encoder \
     --lr 2e-5 \
-    --lr-image-encoder 1e-6 \
-    --lr-prompt-learner 1e-5 \
+    --lr-image-encoder 0 \
+    --lr-prompt-learner 5e-6 \
     --lr-adapter 3e-5 \
-    --weight-decay 0.01 \
+    --weight-decay 0.02 \
     --momentum 0.9 \
     --scheduler cosine \
-    --lambda-cad 0.0 \
-    --lambda-text 0.0 \
+    --lambda-cad 0.1 \
+    --lambda-text 0.1 \
     --lambda_mi 0.0 \
     --lambda_dc 0.0 \
     --mi-warmup 0 \
@@ -66,10 +67,9 @@ python main.py \
     --fusion-type cmaf \
     --use-context \
     --crop-body \
-    --mask-context-body \
-    --modality-dropout 0.1 \
-    --mixup-alpha 0.0 \
-    --drop-path-rate 0.0 \
+    --modality-dropout 0.15 \
+    --mixup-alpha 0.4 \
+    --drop-path-rate 0.1 \
     --duration 1 \
     --image-size 224 \
     --temperature 0.07
