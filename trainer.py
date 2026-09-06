@@ -110,8 +110,9 @@ class Trainer:
         self.mixup_alpha = mixup_alpha
         print(f"DEBUG: Trainer initialized with lambda_cad={lambda_cad}, lambda_text={lambda_text}, lambda_pva={lambda_pva}")
         
-        # Initialize ModelEMA (decay=0.99 is better for small datasets like EMOTIC ~16K)
-        self.ema = ModelEMA(self.model, decay=0.99)
+        # Initialize ModelEMA (decay=0.9999 provides ~10,000-step smoothing window at bs=16)
+        # decay=0.99 at 1000 steps/epoch → 0.99^1000 ≈ 0 (no smoothing effect at all)
+        self.ema = ModelEMA(self.model, decay=0.9999)
         
         if self.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()

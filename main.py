@@ -351,9 +351,10 @@ def run_training(args: argparse.Namespace) -> None:
                 if hasattr(model.cmaf, 'modality_importance'):
                     optimizer_grouped_parameters.append({
                         "params": [model.cmaf.modality_importance],
-                        "lr": 1e-3,  # High LR: modality_importance needs fast updates
+                        "lr": 1e-3,   # High LR: modality_importance needs fast updates
+                        "weight_decay": 0.0,  # No L2 on gate/bias params — decay pulls it to 0
                     })
-                    print(f"=> cmaf.modality_importance optimizer lr=1e-3 (separate group)")
+                    print(f"=> cmaf.modality_importance optimizer lr=1e-3, weight_decay=0.0 (separate group)")
             if hasattr(model, 'gate_fc'):
                 optimizer_grouped_parameters.append({"params": model.gate_fc.parameters(), "lr": args.lr})
             # Q2L Multi-Label Head (EMOTIC) — only add when actually used
@@ -361,13 +362,18 @@ def run_training(args: argparse.Namespace) -> None:
                 optimizer_grouped_parameters.append({"params": model.q2l_head.parameters(), "lr": args.lr})
                 print("=> Added Q2L head parameters to optimizer")
             
-            # class_bias is LEARNABLE (lr=1e-3) initialized from empirical log-odds prior.
-            # Making it learnable allows dynamic calibration of per-class decision thresholds,
-            # preventing dominant classes from monopolizing predictions without choking rare classes.
+            # class_bias: LEARNABLE (lr=1e-3) initialized from empirical log-odds prior.
+            # CRITICAL: weight_decay=0.0 — AdamW L2 decay would silently erase the log-odds
+            # initialization (pulling all biases toward 0), destroying rare-class calibration.
+            # Bias/gate parameters must always have weight_decay=0.
             if hasattr(model, 'class_bias'):
                 model.class_bias.requires_grad_(True)
-                optimizer_grouped_parameters.append({"params": [model.class_bias], "lr": 1e-3})
-                print("=> class_bias is LEARNABLE (lr=1e-3) to calibrate per-class thresholds.")
+                optimizer_grouped_parameters.append({
+                    "params": [model.class_bias],
+                    "lr": 1e-3,
+                    "weight_decay": 0.0,  # CRITICAL: no L2 on bias terms
+                })
+                print("=> class_bias is LEARNABLE (lr=1e-3, weight_decay=0) to calibrate per-class thresholds.")
 
     if args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(optimizer_grouped_parameters, momentum=args.momentum, weight_decay=args.weight_decay)

@@ -162,22 +162,28 @@ class CrossModalAttentionFusion(nn.Module):
             context_out = self.norm_c(context_cross.squeeze(1) + context_feat)
 
             if self.context_gating:
-                # ===== Feature-Preserving Context-Priority Gating =====
+                # ===== Numerically-Stable Context-Priority Gating =====
                 static_weights = F.softmax(self.modality_importance, dim=0)  # (3,)
                 
                 # Adaptive gate: depends on the actual features in this batch
                 concat_for_gate = torch.cat([face_out, body_out, context_out], dim=-1)  # (B, 3*dim)
                 adaptive_weights = F.softmax(self.adaptive_gate(concat_for_gate), dim=-1)  # (B, 3)
                 
-                # Mix static prior (0.7) + adaptive (0.3) — higher static weight lets
-                # modality_importance actually be learned via gradient from static_weights
+                # Mix static prior (0.7) + adaptive (0.3)
                 combined_weights = 0.7 * static_weights.unsqueeze(0) + 0.3 * adaptive_weights  # (B, 3)
                 
-                # Directly scale each modality (preserving 86%+ residual connections and 1536-d dimension)
-                w_face = combined_weights[:, 0:1] * face_out * 3.0
-                w_body = combined_weights[:, 1:2] * body_out * 3.0
-                w_context = combined_weights[:, 2:3] * context_out * 3.0
-                return torch.cat((w_face, w_body, w_context), dim=-1)  # (B, 1536)
+                # Weighted average of modalities → (B, dim)
+                # Then project to (B, 3*dim) via gate_proj to preserve output dimension
+                # This keeps feature magnitude stable (sum of weights=1) unlike scale*3.0
+                w_f = combined_weights[:, 0:1]  # (B, 1)
+                w_b = combined_weights[:, 1:2]
+                w_c = combined_weights[:, 2:3]
+                weighted_avg = w_f * face_out + w_b * body_out + w_c * context_out  # (B, dim)
+                projected = self.gate_proj(weighted_avg)  # (B, 3*dim)
+                
+                # Residual: preserve per-stream features + apply gated correction
+                concat_plain = torch.cat((face_out, body_out, context_out), dim=-1)  # (B, 1536)
+                return concat_plain + 0.1 * projected  # small residual gate
             else:
                 return torch.cat((face_out, body_out, context_out), dim=-1)
 

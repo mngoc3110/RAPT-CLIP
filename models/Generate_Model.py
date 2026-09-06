@@ -107,8 +107,12 @@ class GenerateModel(nn.Module):
             for param in self.image_encoder.parameters():
                 param.requires_grad = False
 
-        # For EAA
-        self.face_adapter = Adapter(c_in=512, reduction=4)
+        # Face & Body Adapters (EAA)
+        # With frozen image encoder, adapters carry ALL domain adaptation.
+        # ratio=0.5 gives more adaptation budget (was 0.2 → too conservative for frozen backbone)
+        self.face_adapter = Adapter(c_in=512, reduction=4, ratio=0.5)
+        # Body stream has ~50% modality weight but previously had NO adapter. Fix:
+        self.body_adapter = Adapter(c_in=512, reduction=4, ratio=0.5)
 
         # For MI Loss
         # Concept Generation & Refinement (CGR) - PromptCAD
@@ -293,9 +297,8 @@ class GenerateModel(nn.Module):
             body_feat = self.image_encoder(image_body_reshaped.float())
             if torch.isnan(body_feat).any(): print("[DEBUG] NaN detected in body_feat from image_encoder!")
             
-        image_body_features = body_feat
+        image_body_features = self.body_adapter(body_feat)  # Apply EAA (symmetric with face)
 
-        # Context Part
         if self.use_context:
             assert image_context is not None, "image_context must be provided when use_context=True"
             image_context_reshaped = image_context.contiguous().view(-1, c, h, w)
@@ -303,6 +306,16 @@ class GenerateModel(nn.Module):
                 context_feat = self.image_encoder(image_context_reshaped.float())
                 if torch.isnan(context_feat).any(): print("[DEBUG] NaN detected in context_feat from image_encoder!")
             image_context_features = context_feat
+
+        # Extract body patches for CAD loss (body patches are more semantically aligned
+        # with emotion text prompts than context/scene patches)
+        patch_features = None
+        need_patches = getattr(self.args, 'lambda_cad', 0) > 0 or getattr(self.args, 'use_cgla', False)
+        if need_patches:
+            with torch.cuda.amp.autocast(enabled=False):
+                _, body_spatial_patches = self.image_encoder(image_body_reshaped.float(), return_patches=True)
+            patch_features = body_spatial_patches.float()
+            patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
 
         # Frame-Level Fusion (CMAF or GFI)
         if self.fusion_type == 'gfi':
@@ -362,16 +375,11 @@ class GenerateModel(nn.Module):
             hand_crafted_text_features = self.hand_crafted_text_features
 
         ################# Spatial Patches for CAD & CGLA (MPA-FER) ###################
-        patch_features = None
-        need_patches = getattr(self.args, 'lambda_cad', 0) > 0 or getattr(self.args, 'use_cgla', False)
-        if need_patches:
-            # Extract 196 spatial patch tokens for spatial attention distillation or CGLA
-            # For EMOTIC/CAER: context/body stream contains rich scene cues; for RAER: body/face stream
-            if self.use_context and image_context is not None:
-                patch_img = image_context_reshaped
-            else:
-                patch_img = image_body_reshaped
-            _, spatial_patches = self.image_encoder(patch_img.type(self.dtype), return_patches=True)
+        if need_patches and patch_features is None:
+            # Fallback when context stream is disabled (e.g. body-only)
+            patch_img = image_body_reshaped
+            with torch.cuda.amp.autocast(enabled=False):
+                _, spatial_patches = self.image_encoder(patch_img.float(), return_patches=True)
             patch_features = spatial_patches.float()
             patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
 
