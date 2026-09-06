@@ -316,6 +316,12 @@ class GenerateModel(nn.Module):
                 _, body_spatial_patches = self.image_encoder(image_body_reshaped.float(), return_patches=True)
             patch_features = body_spatial_patches.float()
             patch_features = patch_features / (patch_features.norm(dim=-1, keepdim=True) + 1e-6)
+            # For video (t>1): image_body_reshaped is (B*T, C, H, W) → patches are (B*T, N, D).
+            # CAD loss expects batch dim = B (to match target). Reshape to (B, T*N, D):
+            # all T frames' patches are treated as the spatial token pool for each video clip.
+            if t > 1:
+                _, N_patches, D_feat = patch_features.shape
+                patch_features = patch_features.view(n, t * N_patches, D_feat)  # (B, T*N, D)
 
         # Frame-Level Fusion (CMAF or GFI)
         if self.fusion_type == 'gfi':
